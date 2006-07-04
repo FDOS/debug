@@ -1,0 +1,23 @@
+DEBUG version 0.98.
+
+This is a partially implemented clone of the MS-DOS DEBUG command.
+See the documentation file (debug.doc) for a list of what has yet to
+be implemented.  Pretty much all the functionality of DOS 2.1 is in there,
+though.
+
+The files in this distribution are:
+
+	debug.com	The executable binary.
+	debug.doc	Detailed documentation file.
+	debug.asm	Assembler source code for DEBUG.  Assemble with nasm.
+	instr.*		Data files on the instruction set.
+	mktables.c	C program to compile the internal instruction-set
+			tables into the source file debug.asm.  It runs under
+			Linux or Turbo C (version 2.0, at least).
+	readme		This file.
+
+This program is copyrighted, but feel free to distribute and use it
+as you wish.  For full copyright conditions, see the file debug.asm.
+
+Paul Vojta
+vojta@math.berkeley.edu

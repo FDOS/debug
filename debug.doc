@@ -1,0 +1,40 @@
+This is a clone of the DOS DEBUG command.
+
+The following are not implemented:
+
+	Decent documentation
+	Loading of .HEX files.
+
+This debugger extends the DOS version in the following ways:
+
+   o	You can do `r cx 1234' instead of having to put the `1234' on a
+	separate line.
+
+   o	The assembler and disassembler support all publicly documented
+	instructions for Intel chips through the Pentium Pro (P6), except for
+	the MMX instructions.  The assembler and disassembler inform you if
+	any instruction is inappropriate for the current processor.
+
+   o	The current processor (for the purposes of assembler and disassembler
+	warnings, above) can be declared to be something else via the following
+	commands:
+
+		m0	Declare current processor to be an 8088
+		m1	Declare 80186
+		m2	Declare 286
+		m3	Declare 386
+		m4	Declare 486
+		m5	Declare Pentium
+		m6	Declare Pentium Pro
+		mc	Declare the existence of a math coprocessor
+		mnc	Declare the absence of a math coprocessor
+		mc2	Declare that the math coprocessor is a 287 (only valid
+			if the current processor is a 386)
+		m?	Print currently declared processor type
+
+   o	When doing `debug < file', debug will not hang if it reaches an end of
+	file before encountering a `q' command.
+
+   o	This debugger saves and restores the program's Control-C and critical
+	error interrupts, providing for better isolation between the debugger
+	and the program being debugged.
