@@ -1,5 +1,5 @@
 ;	DEBUG.ASM	NASM assembler source for a clone of DEBUG.COM
-;			Version 0.98, 10/27/2003.
+;           Version 0.99g, 10/25/2006.
 
 ;	To assemble, use:
 ;		nasm debug.asm -O 2 -o debug.com
@@ -33,6 +33,27 @@
 ;		incompatibilities.
 ;	    0.98 [27 October 2003]  Added EMS commands and copyright conditions.
 
+;	    0.99 [27 Septemb 2006]  bugfix: IF was not displayed correctly.
+;       FS and GS registers displayed if cpu is 80386+. 'rx' displays the 
+;       standard 32bit registers. R register [value] understands the
+;       standard 32bit registers.
+;	    0.99a [28 Septemb 2006] bugfix: JECXZ had wrong prefix (66h,
+;       should be 67h). Assembler/Disassembler understand LOOP(Z|NZ|E|NE)D.
+;	    0.99b [29 Septemb 2006] 'l' and 'w' now work with FAT32 drives.
+;	    0.99c [29 Septemb 2006] 'rx' now switches among 16/32 bit register
+;       dump. 'rn' displays floating point register status.
+;	    0.99d [02 October 2006] bugfix: 'rn' displayed error-pointer 
+;       registers wrong. 
+;	    0.99e [12 October 2006] 'xr' command added to reallocate EMS handle.
+;       'xa' command allows to allocate zero pages on EMS 4.0. 'tm 0|1' added
+;       to be able to switch 't' to the ms-dos debug compatible behaviour
+;       (that is, 't' jumps into 'INT xx').
+;	    0.99f [17 October 2006] debug's EMS functions may work even with a  
+;	    "hidden" EMM. bugfix: display of mappable pages didn't account for
+;       amount of these pages == 0.
+;	    0.99g [25 October 2006] bugfix: 'u' was unable to recognise [ESP]
+;       related memory operands (i.e. mov eax,[esp]).
+
 ;	To do:
 ;		*.HEX files
 ;		< and > and >>
@@ -58,8 +79,12 @@ CEIV	equ	12h	;Critical Error Interrupt Vector
 SPSAV	equ	2eh	;Save the stack pointer here
 DTA	equ	80h	;Program arguments; also used to store file name (N cmd)
 
+%if 0
+	[segment _TEXT]
+%else    
 	org	100h
-	cpu	8086
+%endif    
+	cpu	386 fpu
 
 	jmp	initcode
 
@@ -79,6 +104,8 @@ psp22	dw	0,0		;original terminate address in the PSP
 parent	dw	0		;original PSP of process parent (must be next)
 newmem	dw	0		;size of DEBUG if it hasn't shrunk yet
 machine	db	0		;type of this processor
+regsdmp db  0
+tmode	db  0
 has_87	db	0		;if there is a math coprocessor present
 mach_87	db	0		;type of coprocessor present
 notatty	db	LF		;if standard input is from a file
@@ -131,10 +158,22 @@ reg_es	dw	0		;es
 reg_ss	dw	0		;ss
 reg_cs	dw	0		;cs
 reg_ip	dw	100h		;ip
-flags	dw	200h		;flags (interrupts enabled)
+reg_fs	dw	0		;fs
+reg_gs	dw	0		;gs
+reg_fl	dw	200h		;flags (interrupts enabled)
+
+regshi:
+regh_eax dw 0
+regh_ebx dw 0
+regh_ecx dw 0
+regh_edx dw 0
+regh_esp dw 0
+regh_ebp dw 0
+regh_esi dw 0
+regh_edi dw 0
 
 regnames dw	'AX','BX','CX','DX','SP','BP','SI','DI','DS','ES'
-	dw	'SS','CS','IP'
+	dw	'SS','CS','IP','FS','GS'
 
 segletrs db	'd','e','s','c'
 
@@ -174,7 +213,7 @@ PPLEN	equ	31		;size of the above table
 prompt1	db	'-'		;main prompt
 prompt2	db	':'		;prompt for register value
 
-helpmsg	db	'FreeDOS Debug v 0.98 help screen',CR,LF
+helpmsg	db	'FreeDOS Debug v0.99g help screen',CR,LF
 	db	'Altering memory:',CR,LF
 	db	'compare      C range address		'
 	db	'hex add/sub  H value1 value2',CR,LF
@@ -183,7 +222,7 @@ helpmsg	db	'FreeDOS Debug v 0.98 help screen',CR,LF
 	db	'enter        E address [list]		'
 	db	'search       S range list',CR,LF
 	db	'fill         F range list		'
-	db	'expanded mem XA/XD/XM/XS (X? for help)',CR,LF,CR,LF
+	db	'expanded mem XA/XD/XM/XR/XS,X? for help',CR,LF,CR,LF
 	db	'Assemble/Disassemble:',CR,LF
 	db	'assemble     A [address]		'
 	db	'unassemble   U [range]',CR,LF
@@ -194,8 +233,11 @@ helpmsg	db	'FreeDOS Debug v 0.98 help screen',CR,LF
 	db	'quit         Q',CR,LF
 	db	'proceed      P [=address] [count]	'
 	db	'trace        T [=address] [count]',CR,LF
+	db	'trace mode   TM [0|1]',CR,LF
 	db	'register     R register [value]		'
-	db	'all regs     R',CR,LF
+	db	'all regs     R ',CR,LF
+    db  'FPU register RN				'
+    db  '386 regs on  RX',CR,LF
 	db	'input        I port			'
 	db	'output       O port byte',CR,LF,CR,LF
 	db	'Disk access:',CR,LF
@@ -210,6 +252,7 @@ xhelpmsg db	'Expanded memory (EMS) commands:',CR,LF
 	db	'  Allocate	XA count',CR,LF
 	db	'  Deallocate	XD handle',CR,LF
 	db	'  Map memory	XM logical-page physical-page handle',CR,LF
+	db	'  Reallocate	XR handle count',CR,LF
 	db	'  Show status	XS',CR,LF,'$'
 
 errcarat db	'^ Error',CR,LF,'$'
@@ -237,6 +280,12 @@ msgx86	db	'x86',0
 no_copr	db	' without coprocessor',0
 has_copr db	' with coprocessor',0
 has_287	db	' with 287',0
+regs386 db  '386 regs o'
+regs386s db '  ',0
+tmodes  db  'trace mode is '
+tmodev  db  '  - INTs are ',0
+tmode1  db  'traced',0
+tmode0  db  'processed',0
 unused	db	' (unused)',0
 needsmsg db	'[needs x86]'
 needsmsg_L equ	11
@@ -260,7 +309,7 @@ doserr2	db	'File not found.',CR,LF,'$'
 doserr3	db	'Path not found.',CR,LF,'$'
 doserr5	db	'Access denied.',CR,LF,'$'
 doserr8	db	'Insufficient memory.',CR,LF,'$'
-emmname	db	'EMMXXXX0'
+;emmname	db	'EMMXXXX0'
 emsnot	db	'EMS not installed',CR,LF,'$'
 emserr1	db	'EMS internal error',CR,LF,'$'
 emserr3	db	'Handle not found',CR,LF,'$'
@@ -278,20 +327,22 @@ xaans	db	'Handle created = '
 xaans1	db	'____',CR,LF,'$'
 xdans	db	'Handle '
 xdans1	db	'____ deallocated',CR,LF,'$'
+xrans	db	'Handle reallocated',CR,LF,'$'
 xmans	db	'Logical page '
 xmans1	db	'__ mapped to physical page '
 xmans2	db	'__',CR,LF,'$'
 xsstr1	db	'Handle '
 xsstr1a	db	'____ has '
 xsstr1b	db	'____ pages allocated',CR,LF,'$'
-xsstr2	db	'Physical page '
-xsstr2a	db	'__ = Frame segment '
-xsstr2b	db	'____',CR,LF,'$'
+xsstr2	db	'phys. page '
+xsstr2a	db	'__ = segment '
+xsstr2b	db	'____  ','$'
 xsstr3	db	'____ of a total '
 xsstr3a	db	'____ EMS $'
 xsstr4	db	'es have been allocated',CR,LF,'$'
 xsstrpg	db	'pag$'
 xsstrhd	db	'handl$'
+xsnopgs db	'no mappable pages',CR,LF,CR,LF,'$'
 
 ;	Equates for instruction operands.
 ;	First the sizes.
@@ -359,591 +410,7 @@ P_LEN	equ	9
 replist	db	06ch,06eh,0a4h,0aah,0ach		;REP
 	db	0a6h,0aeh				;REPE/REPNE
 
-;-@@-@@-@@-Do not edit these tables!  They have been automatically generated.
-
-;	Main data table for the assembler.
-
-asmtab	db	16,139,255,248,64,55,255,248,63,234,255,18,243,255,6,5
-	db	245,173,221,245,176,68,245,4,212,5,111,255,1,53,245,173
-	db	67,245,175,170,245,0,4,0,159,255,10,213,245,174,119,245
-	db	176,222,245,9,164,10,63,255,240,29,205,255,239,29,129,255
-	db	241,133,148,255,241,133,225,255,249,242,137,49,255,241,126,17
-	db	241,179,79,255,245,241,133,73,245,241,180,54,255,245,241,130
-	db	225,245,241,179,233,255,245,241,128,121,245,241,179,156,255,69
-	db	212,181,59,181,109,46,95,255,249,45,184,255,74,152,255,75
-	db	204,255,75,50,255,240,78,206,255,73,177,255,244,98,99,255
-	db	244,97,47,255,244,96,226,255,244,98,22,255,244,96,226,255
-	db	244,97,124,255,244,100,203,255,244,100,49,255,244,99,228,255
-	db	244,100,126,255,244,98,22,255,244,96,226,255,244,97,47,255
-	db	244,98,99,255,244,97,47,255,244,97,201,255,244,100,126,255
-	db	244,99,228,255,244,100,49,255,244,100,203,255,244,96,149,255
-	db	244,99,151,255,244,98,253,255,244,97,201,255,244,96,72,255
-	db	244,99,74,255,244,99,74,255,244,99,151,255,244,98,176,255
-	db	244,97,124,255,18,13,175,94,177,197,16,220,17,119,255,49
-	db	238,255,249,50,59,255,245,242,129,244,255,243,183,60,255,243
-	db	125,186,255,249,46,5,255,11,187,255,14,35,255,254,255,252
-	db	255,21,185,245,185,165,245,189,142,255,253,255,239,60,58,255
-	db	65,69,240,255,65,69,225,255,154,19,155,72,65,13,192,66
-	db	66,192,255,66,221,192,66,198,193,255,154,178,155,231,255,165
-	db	213,255,170,165,255,65,69,224,255,250,65,223,226,255,244,65
-	db	244,208,255,244,65,244,192,255,244,65,167,192,255,244,65,167
-	db	208,255,244,65,167,200,255,244,65,167,208,255,244,65,167,192
-	db	255,244,65,244,192,255,244,65,244,208,255,244,65,244,200,255
-	db	244,65,244,216,255,244,65,244,200,255,244,65,167,216,255,244
-	db	65,167,200,255,158,227,160,24,65,20,208,64,248,209,255,244
-	db	65,251,240,244,65,223,241,255,244,67,47,240,244,67,19,241
-	db	255,161,75,162,128,65,20,216,64,248,217,255,66,198,217,255
-	db	241,65,69,255,255,65,69,246,255,250,65,223,225,255,168,131
-	db	169,184,65,13,240,66,66,248,255,66,221,248,66,198,249,255
-	db	169,34,170,87,255,170,235,172,32,65,13,248,66,66,240,255
-	db	66,221,240,66,198,241,255,171,138,172,191,255,250,65,223,224
-	db	255,66,148,192,255,159,130,160,183,255,161,234,163,31,255,154
-	db	255,156,52,168,50,255,65,69,247,255,250,65,223,227,255,159
-	db	207,161,4,255,162,55,163,108,173,2,255,154,96,155,149,167
-	db	9,65,96,192,255,65,69,232,255,65,69,233,255,65,69,234
-	db	255,65,69,235,255,65,69,236,255,65,69,237,255,65,69,238
-	db	255,250,166,110,255,164,10,255,156,123,157,176,65,13,200,66
-	db	66,200,255,66,221,200,66,198,201,255,157,26,158,79,255,65
-	db	69,208,255,65,69,243,255,65,69,248,255,241,65,69,245,255
-	db	65,69,242,255,65,69,252,255,165,62,255,250,170,14,255,65
-	db	69,253,255,250,240,65,223,228,255,241,65,69,254,255,241,65
-	db	69,251,255,65,69,250,255,159,48,160,101,66,148,208,255,161
-	db	152,162,205,171,217,66,148,216,255,250,171,62,255,250,168,218
-	db	255,250,67,49,224,172,114,255,163,179,164,232,65,13,224,66
-	db	66,232,255,66,221,232,66,198,233,255,164,82,165,135,255,166
-	db	27,167,80,65,13,232,66,66,224,255,66,221,224,66,198,225
-	db	255,166,186,167,239,255,65,69,228,255,241,66,149,224,241,66
-	db	121,225,255,244,65,251,232,244,65,223,233,255,244,67,47,232
-	db	244,67,19,233,255,241,66,149,232,241,66,121,233,255,241,65
-	db	146,233,255,46,159,255,65,69,229,255,65,97,200,65,69,201
-	db	255,65,69,244,255,65,69,241,255,65,69,249,255,73,100,255
-	db	189,219,255,189,65,241,129,171,239,32,78,239,32,79,239,31
-	db	182,239,31,183,255,68,183,71,32,255,19,81,245,185,88,245
-	db	239,32,124,255,249,239,32,201,255,61,129,61,207,255,61,246
-	db	255,242,79,104,255,242,192,80,255,249,62,67,255,35,242,241
-	db	117,167,255,34,190,241,116,115,255,34,113,241,116,38,255,35
-	db	165,241,117,90,255,34,113,241,116,38,255,249,68,110,255,35
-	db	11,241,116,192,255,38,90,241,120,15,255,37,192,241,119,117
-	db	255,37,115,241,119,40,255,38,13,241,119,194,255,35,165,241
-	db	117,90,255,34,113,241,116,38,255,34,190,241,116,115,255,35
-	db	242,241,117,167,255,34,190,241,116,115,255,35,88,241,117,13
-	db	255,38,13,241,119,194,255,37,115,241,119,40,255,37,192,241
-	db	119,117,255,38,90,241,120,15,255,34,36,241,115,217,255,37
-	db	38,241,118,219,255,36,140,241,118,65,255,35,88,241,117,13
-	db	255,33,215,241,115,140,255,36,217,241,118,142,255,36,217,241
-	db	118,142,255,37,38,241,118,219,255,36,63,241,117,244,255,35
-	db	11,241,116,192,255,70,214,70,33,181,213,182,7,70,111,255
-	db	47,211,255,240,77,162,255,59,72,255,241,130,145,255,58,251
-	db	255,241,131,43,255,241,131,120,255,42,112,255,239,60,117,255
-	db	240,190,207,255,240,191,28,255,240,193,68,255,240,192,16,255
-	db	246,240,51,188,255,249,52,9,255,68,34,68,33,255,67,213
-	db	67,212,255,67,213,67,212,255,67,136,67,135,255,67,136,67
-	db	135,255,240,77,239,255,240,193,145,255,48,77,48,232,40,236
-	db	41,135,42,71,42,226,53,31,55,136,194,234,241,86,231,241
-	db	87,130,241,87,54,241,87,209,241,88,31,241,88,186,255,49
-	db	84,255,249,49,161,255,241,134,87,241,134,165,255,241,131,239
-	db	241,132,61,255,188,244,255,245,188,167,255,43,80,255,245,188
-	db	90,255,3,157,245,173,144,245,175,247,245,2,108,3,7,255
-	db	251,255,69,97,71,202,255,239,33,22,255,249,239,33,99,255
-	db	197,133,26,137,9,140,2,81,7,35,241,125,167,241,128,16
-	db	255,249,239,29,45,255,249,47,57,255,24,33,182,111,239,32
-	db	31,239,31,132,4,109,6,214,9,63,2,4,241,125,90,241
-	db	127,195,255,249,239,28,224,255,249,46,236,255,200,144,202,249
-	db	239,205,98,255,200,221,203,70,239,205,175,255,199,246,202,95
-	db	239,204,200,255,200,67,202,172,239,205,21,255,243,92,10,255
-	db	246,243,246,243,246,242,58,167,58,155,255,61,15,61,3,255
-	db	243,128,34,255,47,134,255,201,42,203,147,239,205,252,255,202
-	db	17,204,122,239,206,227,255,11,164,14,13,16,118,18,223,30
-	db	78,30,156,255,247,38,247,46,247,54,247,62,247,100,247,101
-	db	201,42,203,147,239,205,252,255,201,119,203,224,239,206,73,255
-	db	8,109,245,174,42,245,176,145,245,7,60,7,215,255,52,86
-	db	255,249,52,163,255,241,122,173,255,241,121,121,255,241,121,44
-	db	255,241,122,96,255,241,121,44,255,241,121,198,255,241,125,21
-	db	255,241,124,123,255,241,124,46,255,241,124,200,255,241,122,96
-	db	255,241,121,44,255,241,121,121,255,241,122,173,255,241,121,121
-	db	255,241,122,19,255,241,124,200,255,241,124,46,255,241,124,123
-	db	255,241,125,21,255,241,120,223,255,241,123,225,255,241,123,71
-	db	255,241,122,19,255,241,120,146,255,241,123,148,255,241,123,148
-	db	255,241,123,225,255,241,122,250,255,241,121,198,255,240,190,53
-	db	255,240,190,130,255,241,126,151,241,126,229,255,241,128,255,241
-	db	129,77,255,240,192,169,255,240,191,118,255,74,229,255,76,25
-	db	255,75,127,255,51,34,255,249,51,111,255,240,192,247,255,13
-	db	61,245,174,196,245,177,43,245,12,12,12,167,255,50,137,187
-	db	178,39,184,39,185,255,240,193,222,255,240,194,43,255,46,159
-	db	255,242,79,181,255,243,91,112,255,245,242,134,196,255,43,149
-	db	43,150,245,40,82,245,40,83,255,64,171,255,64,171,255,15
-	db	165,245,175,17,245,177,120,245,14,116,15,15,255
-
-;	Data on groups (for the assembler).
-
-agroups	dw	131,128,442,255,455,254,246,257,256,198,143,208,210,192
-
-;	This is the list of assembler mnemonics.
-
-mnlist	db	1,1,"AAA",0,1,4,"AAD",0,1,8,"AAM",0,1,12,"AAS",0
-	db	1,15,"ADC",0,1,29,"ADD",0,1,43,"AND",0,1,57,"ARPL",0
-	db	1,61,"BOUND",0,1,65,"BSF",0,1,69,"BSR",0
-	db	1,73,"BSWAP",0,1,78,"BT",0,1,85,"BTC",0,1,94,"BTR",0
-	db	1,103,"BTS",0,1,112,"CALL",0,1,122,"CBW",0,2,37,"CDQ",0
-	db	1,125,"CLC",0,1,128,"CLD",0,1,131,"CLI",0,1,134,"CLTS",0
-	db	1,138,"CMC",0,1,141,"CMOVA",0,1,145,"CMOVAE",0
-	db	1,149,"CMOVB",0,1,153,"CMOVBE",0,1,157,"CMOVC",0
-	db	1,161,"CMOVE",0,1,165,"CMOVG",0,1,169,"CMOVGE",0
-	db	1,173,"CMOVL",0,1,177,"CMOVLE",0,1,181,"CMOVNA",0
-	db	1,185,"CMOVNAE",0,1,189,"CMOVNB",0,1,193,"CMOVNBE",0
-	db	1,197,"CMOVNC",0,1,201,"CMOVNE",0,1,205,"CMOVNG",0
-	db	1,209,"CMOVNGE",0,1,213,"CMOVNL",0,1,217,"CMOVNLE",0
-	db	1,221,"CMOVNO",0,1,225,"CMOVNP",0,1,229,"CMOVNS",0
-	db	1,233,"CMOVNZ",0,1,237,"CMOVO",0,1,241,"CMOVP",0
-	db	1,245,"CMOVPE",0,1,249,"CMOVPO",0,1,253,"CMOVS",0
-	db	2,2,"CMOVZ",0,2,6,"CMP",0,2,17,"CMPSB",0
-	db	2,20,"CMPSD",0,2,21,"CMPSW",0,2,24,"CMPXCHG",0
-	db	2,29,"CMPXCHG8B",0,2,33,"CPUID",0,6,188,"CS",0
-	db	2,38,"CWD",0,1,121,"CWDE",0,2,41,"DAA",0,2,44,"DAS",0
-	db	2,47,"DB",0,2,49,"DD",0,2,51,"DEC",0,2,57,"DIV",0
-	db	6,192,"DS",0,2,60,"DW",0,2,62,"ENTER",0,6,186,"ES",0
-	db	2,66,"F2XM1",0,2,70,"FABS",0,2,74,"FADD",0
-	db	2,85,"FADDP",0,2,97,"FBLD",0,2,100,"FBSTP",0
-	db	2,103,"FCHS",0,2,107,"FCLEX",0,2,112,"FCMOVA",0
-	db	2,117,"FCMOVAE",0,2,122,"FCMOVB",0,2,127,"FCMOVBE",0
-	db	2,132,"FCMOVE",0,2,137,"FCMOVNA",0,2,142,"FCMOVNAE",0
-	db	2,147,"FCMOVNB",0,2,152,"FCMOVNBE",0,2,157,"FCMOVNE",0
-	db	2,162,"FCMOVNU",0,2,167,"FCMOVNZ",0,2,172,"FCMOVU",0
-	db	2,177,"FCMOVZ",0,2,182,"FCOM",0,2,193,"FCOMI",0
-	db	2,202,"FCOMIP",0,2,211,"FCOMP",0,2,222,"FCOMPP",0
-	db	2,226,"FCOS",0,2,231,"FDECSTP",0,2,235,"FDISI",0
-	db	2,240,"FDIV",0,2,251,"FDIVP",0,3,8,"FDIVR",0
-	db	3,19,"FDIVRP",0,3,31,"FENI",0,3,36,"FFREE",0
-	db	2,92,"FIADD",0,3,40,"FICOM",0,3,45,"FICOMP",0
-	db	3,3,"FIDIV",0,3,26,"FIDIVR",0,3,50,"FILD",0
-	db	3,141,"FIMUL",0,3,57,"FINCSTP",0,3,61,"FINIT",0
-	db	3,66,"FIST",0,3,71,"FISTP",0,3,253,"FISUB",0
-	db	4,21,"FISUBR",0,3,78,"FLD",0,3,88,"FLD1",0
-	db	3,116,"FLDCW",0,3,120,"FLDENV",0,3,96,"FLDL2E",0
-	db	3,92,"FLDL2T",0,3,104,"FLDLG2",0,3,108,"FLDLN2",0
-	db	3,100,"FLDPI",0,3,112,"FLDZ",0,3,123,"FMUL",0
-	db	3,134,"FMULP",0,2,108,"FNCLEX",0,2,236,"FNDISI",0
-	db	3,32,"FNENI",0,3,62,"FNINIT",0,3,117,"FNLDCW",0
-	db	3,146,"FNOP",0,3,175,"FNSAVE",0,3,183,"FNSETPM",0
-	db	3,221,"FNSTCW",0,3,225,"FNSTENV",0,3,229,"FNSTSW",0
-	db	3,150,"FPATAN",0,3,154,"FPREM",0,3,158,"FPREM1",0
-	db	3,163,"FPTAN",0,3,167,"FRNDINT",0,3,171,"FRSTOR",0
-	db	6,194,"FS",0,3,174,"FSAVE",0,3,178,"FSCALE",0
-	db	3,182,"FSETPM",0,3,188,"FSIN",0,3,193,"FSINCOS",0
-	db	3,198,"FSQRT",0,3,202,"FST",0,3,220,"FSTCW",0
-	db	3,224,"FSTENV",0,3,210,"FSTP",0,3,228,"FSTSW",0
-	db	3,235,"FSUB",0,3,246,"FSUBP",0,4,3,"FSUBR",0
-	db	4,14,"FSUBRP",0,4,26,"FTST",0,4,30,"FUCOM",0
-	db	4,39,"FUCOMI",0,4,48,"FUCOMIP",0,4,57,"FUCOMP",0
-	db	4,66,"FUCOMPP",0,4,71,"FWAIT",0,4,74,"FXAM",0
-	db	4,78,"FXCH",0,4,85,"FXTRACT",0,4,89,"FYL2X",0
-	db	4,93,"FYL2XP1",0,6,196,"GS",0,4,97,"HLT",0
-	db	4,100,"IDIV",0,4,103,"IMUL",0,4,121,"IN",0,4,126,"INC",0
-	db	4,132,"INSB",0,4,136,"INSD",0,4,137,"INSW",0
-	db	4,141,"INT",0,4,146,"INTO",0,4,149,"INVD",0
-	db	4,153,"INVLPG",0,4,158,"IRET",0,4,157,"IRETD",0
-	db	4,161,"JA",0,4,167,"JAE",0,4,173,"JB",0,4,179,"JBE",0
-	db	4,185,"JC",0,4,192,"JCXZ",0,4,195,"JE",0,4,191,"JECXZ",0
-	db	4,201,"JG",0,4,207,"JGE",0,4,213,"JL",0,4,219,"JLE",0
-	db	5,90,"JMP",0,4,225,"JNA",0,4,231,"JNAE",0,4,237,"JNB",0
-	db	4,243,"JNBE",0,4,249,"JNC",0,4,255,"JNE",0,5,6,"JNG",0
-	db	5,12,"JNGE",0,5,18,"JNL",0,5,24,"JNLE",0
-	db	5,30,"JNO",0,5,36,"JNP",0,5,42,"JNS",0,5,48,"JNZ",0
-	db	5,54,"JO",0,5,60,"JP",0,5,66,"JPE",0,5,72,"JPO",0
-	db	5,78,"JS",0,5,84,"JZ",0,5,101,"LAHF",0,5,104,"LAR",0
-	db	5,108,"LDS",0,5,126,"LEA",0,5,129,"LEAVE",0
-	db	5,115,"LES",0,5,118,"LFS",0,5,133,"LGDT",0,5,122,"LGS",0
-	db	5,137,"LIDT",0,5,141,"LLDT",0,5,145,"LMSW",0
-	db	5,149,"LOCK",0,5,151,"LODSB",0,5,154,"LODSD",0
-	db	5,155,"LODSW",0,5,158,"LOOP",0,5,163,"LOOPE",0
-	db	5,173,"LOOPNE",0,5,178,"LOOPNZ",0,5,168,"LOOPZ",0
-	db	5,183,"LSL",0,5,111,"LSS",0,5,187,"LTR",0,5,191,"MOV",0
-	db	5,228,"MOVSB",0,5,231,"MOVSD",0,5,232,"MOVSW",0
-	db	5,235,"MOVSX",0,5,242,"MOVZX",0,5,249,"MUL",0
-	db	5,252,"NEG",0,6,1,"NOP",0,6,4,"NOT",0,6,8,"OR",0
-	db	6,22,"ORG",0,6,24,"OUT",0,6,29,"OUTSB",0
-	db	6,33,"OUTSD",0,6,34,"OUTSW",0,6,38,"POP",0
-	db	6,56,"POPA",0,6,55,"POPAD",0,6,61,"POPF",0
-	db	6,60,"POPFD",0,6,64,"PUSH",0,6,90,"PUSHA",0
-	db	6,89,"PUSHAD",0,6,95,"PUSHF",0,6,94,"PUSHFD",0
-	db	6,98,"RCL",0,6,106,"RCR",0,6,130,"RDMSR",0
-	db	6,134,"REP",0,6,136,"REPE",0,6,138,"REPNE",0
-	db	6,140,"RET",0,6,145,"RETF",0,6,114,"ROL",0,6,122,"ROR",0
-	db	6,150,"RSM",0,6,154,"SAHF",0,6,157,"SAL",0,6,165,"SAR",0
-	db	6,214,"SBB",0,6,228,"SCASB",0,6,231,"SCASD",0
-	db	6,232,"SCASW",0,6,173,"SEG",0,6,235,"SETA",0
-	db	6,239,"SETAE",0,6,243,"SETB",0,6,247,"SETBE",0
-	db	6,251,"SETC",0,6,255,"SETE",0,7,4,"SETG",0
-	db	7,8,"SETGE",0,7,12,"SETL",0,7,16,"SETLE",0
-	db	7,20,"SETNA",0,7,24,"SETNAE",0,7,28,"SETNB",0
-	db	7,32,"SETNBE",0,7,36,"SETNC",0,7,40,"SETNE",0
-	db	7,44,"SETNG",0,7,48,"SETNGE",0,7,52,"SETNL",0
-	db	7,56,"SETNLE",0,7,60,"SETNO",0,7,64,"SETNP",0
-	db	7,68,"SETNS",0,7,72,"SETNZ",0,7,76,"SETO",0
-	db	7,80,"SETP",0,7,84,"SETPE",0,7,88,"SETPO",0
-	db	7,92,"SETS",0,7,96,"SETZ",0,7,100,"SGDT",0
-	db	6,198,"SHL",0,7,108,"SHLD",0,6,206,"SHR",0
-	db	7,115,"SHRD",0,7,104,"SIDT",0,7,122,"SLDT",0
-	db	7,126,"SMSW",0,6,190,"SS",0,7,130,"STC",0,7,133,"STD",0
-	db	7,136,"STI",0,7,139,"STOSB",0,7,142,"STOSD",0
-	db	7,143,"STOSW",0,7,146,"STR",0,7,150,"SUB",0
-	db	7,164,"TEST",0,7,173,"VERR",0,7,177,"VERW",0
-	db	7,181,"WAIT",0,7,184,"WBINVD",0,7,188,"WRMSR",0
-	db	7,192,"XADD",0,7,197,"XCHG",0,7,208,"XLAT",0
-	db	7,211,"XLATB",0,7,214,"XOR",0
-end_mnlist:
-
-;	These are equates to refer to the above mnemonics.
-
-MNEM_BSWAP	EQU	71
-MNEM_DB	EQU	506
-MNEM_LOCK	EQU	1819
-MNEM_REP	EQU	2117
-MNEM_REPE	EQU	2123
-MNEM_REPNE	EQU	2130
-MNEM_SEG	EQU	2218
-MNEM_WAIT	EQU	2592
-
-;	Number of entries in the following array.
-
-ASMMOD	EQU	77
-
-;	This is an array of indices into the oplists array (below).
-;	It is used by the assembler to save space.
-
-opindex	db	0,1,4,7,10,13,16,19,22,25,27,30,33,35,37,39,41
-	db	43,45,48,50,52,55,58,62,64,66,68,70,73,75,77,81
-	db	85,89,93,96,99,101,103,105,108,110,112,115,118,121,124,127
-	db	130,134,138,141,144,146,148,150,152,154,156,158,161,164,167,170
-	db	173,175,177,181,185,188,191,194,197,200,203,206
-
-;	These are the lists of operands for the various instruction types.
-
-oplists	db	0	;simple instruction
-	db	OP_ALL+OP_AX, OP_ALL+OP_IMM, 0
-	db	OP_ALL+OP_RM, OP_ALL+OP_IMM, 0
-	db	OP_1632+OP_RM, OP_IMMS8, 0
-	db	OP_ALL+OP_RM, OP_ALL+OP_R, 0
-	db	OP_ALL+OP_R, OP_ALL+OP_RM, 0
-	db	OP_16+OP_RM, OP_16+OP_R, 0
-	db	OP_1632+OP_R, OP_1632+OP_M, 0
-	db	OP_1632+OP_R, OP_1632+OP_RM, 0
-	db	OP_32+OP_R_ADD, 0
-	db	OP_1632+OP_RM, OP_1632+OP_R, 0
-	db	OP_1632+OP_RM, OP_IMM8, 0
-	db	OP_REL1632, 0
-	db	OP_FARP, 0
-	db	OP_FARMEM, 0
-	db	OP_M64, 0
-	db	OP_ALL+OP_RM, 0
-	db	OP_1632+OP_R_ADD, 0
-	db	OP_16+OP_IMM, OP_IMM8, 0
-	db	OP_MFLOAT, 0
-	db	OP_MDOUBLE, 0
-	db	OP_ST, OP_STI, 0
-	db	OP_STI, OP_ST, 0
-	db	OP_1CHK, OP_STI, OP_ST, 0
-	db	OP_32+OP_M, 0
-	db	OP_16+OP_M, 0
-	db	OP_M80, 0
-	db	OP_STI, 0
-	db	OP_1CHK, OP_STI, 0
-	db	OP_MXX, 0
-	db	OP_16+OP_AX, 0
-	db	OP_1632+OP_R, OP_1632+OP_RM, OP_IMMS8, 0
-	db	OP_1632+OP_R_MOD, OP_1632+OP_R, OP_IMMS8, 0
-	db	OP_1632+OP_R, OP_1632+OP_RM, OP_1632+OP_IMM, 0
-	db	OP_1632+OP_R_MOD, OP_1632+OP_R, OP_1632+OP_IMM, 0
-	db	OP_ALL+OP_AX, OP_IMM8, 0
-	db	OP_ALL+OP_AX, OP_DX, 0
-	db	OP_3, 0
-	db	OP_IMM8, 0
-	db	OP_REL8, 0
-	db	OP_ECX, OP_REL8, 0
-	db	OP_1632+OP_RM, 0
-	db	OP_16+OP_RM, 0
-	db	OP_16+OP_RM, OP_SEGREG, 0
-	db	OP_SEGREG, OP_16+OP_RM, 0
-	db	OP_ALL+OP_AX, OP_ALL+OP_MOFFS, 0
-	db	OP_ALL+OP_MOFFS, OP_ALL+OP_AX, 0
-	db	OP_8+OP_R_ADD, OP_8+OP_IMM, 0
-	db	OP_1632+OP_R_ADD, OP_1632+OP_IMM, 0
-	db	OP_1632+OP_R, OP_SHOSIZ, OP_8+OP_RM, 0
-	db	OP_1632+OP_R, OP_SHOSIZ, OP_16+OP_RM, 0
-	db	OP_IMM8, OP_ALL+OP_AX, 0
-	db	OP_DX, OP_ALL+OP_AX, 0
-	db	OP_1632+OP_M, 0
-	db	OP_ES, 0
-	db	OP_CS, 0
-	db	OP_SS, 0
-	db	OP_DS, 0
-	db	OP_FS, 0
-	db	OP_GS, 0
-	db	OP_SHOSIZ, OP_1632+OP_IMM, 0
-	db	OP_SHOSIZ, OP_IMM8, 0
-	db	OP_ALL+OP_RM, OP_1, 0
-	db	OP_ALL+OP_RM, OP_CL, 0
-	db	OP_ALL+OP_RM, OP_IMM8, 0
-	db	OP_16+OP_IMM, 0
-	db	OP_8+OP_RM, 0
-	db	OP_1632+OP_RM, OP_1632+OP_R, OP_IMM8, 0
-	db	OP_1632+OP_RM, OP_1632+OP_R, OP_CL, 0
-	db	OP_1632+OP_AX, OP_1632+OP_R_ADD, 0
-	db	OP_1632+OP_R_ADD, OP_1632+OP_AX, 0
-	db	OP_32+OP_R_MOD, OP_CR, 0
-	db	OP_CR, OP_32+OP_R_MOD, 0
-	db	OP_32+OP_R_MOD, OP_DR, 0
-	db	OP_DR, OP_32+OP_R_MOD, 0
-	db	OP_32+OP_R_MOD, OP_TR, 0
-	db	OP_TR, OP_32+OP_R_MOD, 0
-
-OPTYPES_BASE	EQU	12
-
-OPLIST_Z	EQU	113
-OPLIST_ES	EQU	158
-
-;	Here is the compressed table of the opcode types.
-
-optypes	db	 22, 22, 25, 25, 13, 13,158,158	; 00 - 07 (main opcode part)
-	db	 22, 22, 25, 25, 13, 13,160,  2	; 08 - 0f
-	db	 22, 22, 25, 25, 13, 13,162,162	; 10 - 17
-	db	 22, 22, 25, 25, 13, 13,164,164	; 18 - 1f
-	db	 22, 22, 25, 25, 13, 13, 10, 12	; 20 - 27
-	db	 22, 22, 25, 25, 13, 13, 10, 12	; 28 - 2f
-	db	 22, 22, 25, 25, 13, 13, 10, 12	; 30 - 37
-	db	 22, 22, 25, 25, 13, 13, 10, 12	; 38 - 3f
-	db	 55, 55, 55, 55, 55, 55, 55, 55	; 40 - 47
-	db	 55, 55, 55, 55, 55, 55, 55, 55	; 48 - 4f
-	db	 55, 55, 55, 55, 55, 55, 55, 55	; 50 - 57
-	db	 55, 55, 55, 55, 55, 55, 55, 55	; 58 - 5f
-	db	 12, 12, 31, 28, 10, 10, 10, 10	; 60 - 67
-	db	170, 97,173, 89, 12, 12, 12, 12	; 68 - 6f
-	db	115,115,115,115,115,115,115,115	; 70 - 77
-	db	115,115,115,115,115,115,115,115	; 78 - 7f
-	db	  4,  4,  0,  4, 22, 22, 25, 25	; 80 - 87
-	db	 22, 22, 25, 25,124, 31,127,  4	; 88 - 8f
-	db	 12,197,197,197,197,197,197,197	; 90 - 97
-	db	 12, 12, 47, 12, 12, 12, 12, 12	; 98 - 9f
-	db	130,130,133,133, 12, 12, 12, 12	; a0 - a7
-	db	 13, 13, 12, 12, 12, 12, 12, 12	; a8 - af
-	db	136,136,136,136,136,136,136,136	; b0 - b7
-	db	139,139,139,139,139,139,139,139	; b8 - bf
-	db	  4,  4,185, 12, 31, 31,  4,  4	; c0 - c7
-	db	 57, 12,185, 12,111,113, 12, 12	; c8 - cf
-	db	  4,  4,  4,  4,113,113,  0, 12	; d0 - d7
-	db	  6,  6,  6,  6,  6,  6,  6,  6	; d8 - df
-	db	117,117,117,115,105,105,150,150	; e0 - e7
-	db	 45, 45, 47,115,108,108,153,153	; e8 - ef
-	db	 10,  0, 10, 10, 12, 12,  4,  4	; f0 - f7
-	db	 12, 12, 12, 12, 12, 12,  4,  4	; f8 - ff
-	db	 16, 16, 16, 16, 16, 16, 16, 16	; 100 - 107 (Intel group 1)
-	db	 19, 19, 19, 19, 19, 19, 19, 19	; 108 - 10f
-	db	176,176,176,176,176,176,  0,176	; 110 - 117 (Intel group 2)
-	db	179,179,179,179,179,179,  0,179	; 118 - 11f
-	db	182,182,182,182,182,182,  0,182	; 120 - 127 (Intel group 2a)
-	db	 16,  0, 53, 53, 53, 53, 53, 53	; 128 - 12f (Intel group 3)
-	db	 53, 53,120, 49,120, 49,120,  0	; 130 - 137 (Intel group 5)
-	db	120,122,122,122,122,122,  0,  0	; 138 - 13f (Intel group 6)
-	db	 85, 85, 85, 85,122,  0,122, 85	; 140 - 147 (Intel group 7)
-	db	 60, 60, 60, 60, 60, 60, 60, 60	; 148 - 14f (Coprocessor d8)
-	db	 64, 64, 82, 82, 64, 64, 64, 64	; 150 - 157
-	db	 60,  0, 60, 60, 85, 76, 85, 76	; 158 - 15f (Coprocessor d9)
-	db	 80, 82,  8,  0,  8,  8,  8,  8	; 160 - 167
-	db	 74, 74, 74, 74, 74, 74, 74, 74	; 168 - 16f (Coprocessor da)
-	db	 64, 64, 64, 64,  0,  8,  0,  0	; 170 - 177
-	db	 74,  0, 74, 74,  0, 78,  0, 78	; 178 - 17f (Coprocessor db)
-	db	 64, 64, 64, 64,  8, 82, 82,  0	; 180 - 187
-	db	 62, 62, 62, 62, 62, 62, 62, 62	; 188 - 18f (Coprocessor dc)
-	db	 67, 67,  0,  0, 67, 67, 67, 67	; 190 - 197
-	db	 62,  0, 62, 62, 85,  0, 85, 76	; 198 - 19f (Coprocessor dd)
-	db	 80,  0, 80, 80, 82, 82,  0,  0	; 1a0 - 1a7
-	db	 76, 76, 76, 76, 76, 76, 76, 76	; 1a8 - 1af (Coprocessor de)
-	db	 70, 70,  0,  8, 70, 70, 70, 70	; 1b0 - 1b7
-	db	 76,  0, 76, 76, 78, 51, 78, 51	; 1b8 - 1bf (Coprocessor df)
-	db	  0,  0,  0,  0,  8, 82, 82,  0	; 1c0 - 1c7
-	db	 12, 12, 12, 12, 12, 12, 12,  0	; 1c8 - 1cf (Coprocessor groups)
-	db	 12, 12, 12, 12, 12, 12, 12, 12	; 1d0 - 1d7
-	db	 12, 12, 12, 12, 12, 12, 12, 12	; 1d8 - 1df
-;	The rest of these are squeezed.
-	db	 0,  4,  4, 34, 34, 12, 12, 12
-	db	203,209,206,212,215,218, 12, 12
-	db	 34, 34, 34, 34, 34, 34, 34, 34
-	db	 34, 34, 34, 34, 34, 34, 34, 34
-	db	 45, 45, 45, 45, 45, 45, 45, 45
-	db	 45, 45, 45, 45, 45, 45, 45, 45
-	db	187,187,187,187,187,187,187,187
-	db	187,187,187,187,187,187,187,187
-	db	166,166, 12, 39,189,193,168,168
-	db	 12, 39,189,193, 34, 22, 22, 31
-	db	 39, 31, 31,142,146,  4, 39, 34
-	db	 34,142,146, 22, 22,  4, 37, 37
-	db	 37, 37, 37, 37, 37, 37, 53, 53
-	db	 42, 42, 42, 42, 51,156, 16, 12
-	db	 12, 12, 12, 12, 12, 12, 12, 12
-	db	 12, 12, 12, 87
-
-;	And here is the compressed table of additional information.
-
-opinfo	dw	00020h,00020h,00020h,00020h,00020h,00020h,00808h,007e4h	; 00
-	dw	007bbh,007bbh,007bbh,007bbh,007bbh,007bbh,00808h,001e0h	; 08
-	dw	0001ah,0001ah,0001ah,0001ah,0001ah,0001ah,00808h,007e4h	; 10
-	dw	0088ch,0088ch,0088ch,0088ch,0088ch,0088ch,00808h,007e4h	; 18
-	dw	00026h,00026h,00026h,00026h,00026h,00026h,00001h,001eeh	; 20
-	dw	00a05h,00a05h,00a05h,00a05h,00a05h,00a05h,00101h,001f4h	; 28
-	dw	00a55h,00a55h,00a55h,00a55h,00a55h,00a55h,00201h,00002h	; 30
-	dw	001a0h,001a0h,001a0h,001a0h,001a0h,001a0h,00301h,00014h	; 38
-	dw	005c2h,005c2h,005c2h,005c2h,005c2h,005c2h,005c2h,005c2h	; 40
-	dw	00204h,00204h,00204h,00204h,00204h,00204h,00204h,00204h	; 48
-	dw	00808h,00808h,00808h,00808h,00808h,00808h,00808h,00808h	; 50
-	dw	007e4h,007e4h,007e4h,007e4h,007e4h,007e4h,007e4h,007e4h	; 58
-	dw	0180fh,017eah,01033h,0202ch,03401h,03501h,03010h,03020h	; 60
-	dw	01808h,015b6h,01808h,015b6h,015c8h,015d6h,017cch,017dch	; 68
-	dw	006ach,00694h,00614h,0060eh,006c7h,006a6h,00619h,00609h	; 70
-	dw	006c2h,006a0h,006b6h,006bch,00643h,0063dh,00648h,00638h	; 78
-	dw	00100h,00100h,00000h,00108h,00a0bh,00a0bh,00a3fh,00a3fh	; 80
-	dw	00775h,00775h,00775h,00775h,00775h,006dfh,00775h,002f8h	; 88
-	dw	007afh,00a3fh,00a3fh,00a3fh,00a3fh,00a3fh,00a3fh,00a3fh	; 90
-	dw	0006dh,001e1h,00066h,00a20h,00820h,007f9h,00879h,006cch	; 98
-	dw	00775h,00775h,00775h,00775h,0077bh,0078bh,001a6h,001b6h	; a0
-	dw	00a0bh,00a0bh,009e7h,009f7h,00722h,00732h,00892h,008a2h	; a8
-	dw	00775h,00775h,00775h,00775h,00775h,00775h,00775h,00775h	; b0
-	dw	00775h,00775h,00775h,00775h,00775h,00775h,00775h,00775h	; b8
-	dw	00120h,00120h,0085ah,0085ah,006edh,006d9h,00300h,00300h	; c0
-	dw	0121ah,016e5h,00860h,00860h,005ddh,005ddh,005e3h,005fah	; c8
-	dw	00110h,00110h,00118h,00118h,0000eh,00008h,00000h,00a4dh	; d0
-	dw	00148h,00158h,00168h,00178h,00188h,00198h,001a8h,001b8h	; d8
-	dw	00752h,0075bh,0073ah,00624h,005bdh,005bdh,007c6h,007c6h	; e0
-	dw	00066h,0064eh,0064eh,0064eh,005bdh,005bdh,007c6h,007c6h	; e8
-	dw	00008h,00000h,00002h,00006h,005a9h,00092h,00128h,00128h	; f0
-	dw	00079h,009d5h,00085h,009e1h,0007fh,009dbh,002e0h,00130h	; f8
-	dw	00020h,007bbh,0001ah,0088ch,00026h,00a05h,00a55h,001a0h	; 100
-	dw	00020h,007bbh,0001ah,0088ch,00026h,00a05h,00a55h,001a0h	; 108
-	dw	00867h,0086dh,00831h,00837h,009a1h,009aeh,00000h,00886h	; 110
-	dw	00867h,0086dh,00831h,00837h,009a1h,009aeh,00000h,00886h	; 118
-	dw	01867h,0186dh,01831h,01837h,019a1h,019aeh,00000h,01886h	; 120
-	dw	00a0bh,00000h,007b5h,007a9h,007a3h,005b6h,0020ah,005afh	; 128
-	dw	005c2h,00204h,00066h,00066h,0064eh,0064eh,00808h,00000h	; 130
-	dw	029c2h,029ffh,0270dh,0276fh,02a12h,02a19h,00000h,00000h	; 138
-	dw	0299ah,029bbh,026f9h,02706h,029c9h,00000h,02714h,045f1h	; 140
-	dw	00236h,00419h,002ech,00304h,0051dh,0052ch,0032eh,0033dh	; 148
-	dw	00236h,00419h,002ech,00304h,0051dh,0052ch,0032eh,0033dh	; 150
-	dw	003c8h,00000h,004f7h,0050eh,003ddh,0044bh,00477h,0046eh	; 158
-	dw	003c8h,00581h,00308h,00000h,00310h,001c8h,001d0h,001d8h	; 160
-	dw	0035dh,0038eh,00365h,0036dh,003b7h,003bfh,00376h,0037eh	; 168
-	dw	06276h,06289h,0627fh,062dah,00000h,00318h,00000h,00000h	; 170
-	dw	00387h,00000h,003a8h,003afh,00000h,003c8h,00000h,0050eh	; 178
-	dw	062a7h,062bch,062b1h,062c6h,00320h,0654ch,062f3h,00000h	; 180
-	dw	00236h,00419h,002ech,00304h,0051dh,0052ch,0032eh,0033dh	; 188
-	dw	00236h,00419h,00000h,00000h,0052ch,0051dh,0033dh,0032eh	; 190
-	dw	003c8h,00000h,004f7h,0050eh,004b6h,00000h,0045bh,00481h	; 198
-	dw	00355h,00000h,004f7h,0050eh,03544h,0355fh,00000h,00000h	; 1a0
-	dw	0035dh,0038eh,00365h,0036dh,003b7h,003bfh,00376h,0037eh	; 1a8
-	dw	0023dh,00420h,00000h,00328h,00534h,00524h,00345h,00335h	; 1b0
-	dw	00387h,00000h,003a8h,003afh,00245h,00387h,0024ch,003afh	; 1b8
-	dw	00000h,00000h,00000h,00000h,00330h,06555h,062fbh,00000h	; 1c0
-	dw	003ceh,003efh,003e6h,0040ah,003f8h,00401h,00412h,00000h	; 1c8
-	dw	00227h,00592h,004a4h,0048ah,00588h,0349bh,0031ch,00396h	; 1d0
-	dw	00493h,0059ah,004efh,034e5h,004ach,004cch,034deh,03315h	; 1d8
-;	The rest of these are squeezed.
-	dw	     0,00138h,00140h,026d3h,02763h,0208bh,045eah,04a27h
-	dw	03775h,03775h,03775h,03775h,03775h,03775h,05a30h,0583dh
-	dw	0616eh,0614ah,060a9h,060a0h,06198h,06165h,060b1h,06098h
-	dw	06190h,0615ch,0617eh,06187h,060dbh,060d2h,060e3h,060cah
-	dw	036ach,03694h,03614h,0360eh,036c7h,036a6h,03619h,03609h
-	dw	036c2h,036a0h,036b6h,036bch,03643h,0363dh,03648h,03638h
-	dw	0396eh,0394eh,038bfh,038b7h,03993h,03966h,038c6h,038b0h
-	dw	0398ch,0395eh,0397ch,03984h,038ebh,038e3h,038f2h,038dch
-	dw	03808h,037e4h,051d4h,0304fh,039a7h,039a7h,03808h,037e4h
-	dw	05873h,03060h,039b4h,039b4h,035b6h,041beh,041beh,03769h
-	dw	0305ah,036f3h,03700h,0379bh,0379bh,002e8h,03054h,0303bh
-	dw	03041h,03793h,03793h,04a38h,04a38h,002f0h,04047h,04047h
-	dw	04047h,04047h,04047h,04047h,04047h,04047h,005c2h,00204h
-	dw	0304fh,03060h,0305ah,03054h,051c8h,007e4h,00775h,00454h
-	dw	00254h,0022fh,0053dh,0057ah,03568h,0043ah,00431h,00428h
-	dw	00442h,02464h,0030ch,00481h
-
-;	This table converts unsqueezed numbers to squeezed.
-
-sqztab	db	  1,  2,  3,  4,  0,  0,  5,  0
-	db	  6,  7,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  8,  9, 10, 11, 12,  0, 13,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	 14,  0, 15,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	 16, 17, 18, 19, 20, 21, 22, 23
-	db	 24, 25, 26, 27, 28, 29, 30, 31
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	 32, 33, 34, 35, 36, 37, 38, 39
-	db	 40, 41, 42, 43, 44, 45, 46, 47
-	db	 48, 49, 50, 51, 52, 53, 54, 55
-	db	 56, 57, 58, 59, 60, 61, 62, 63
-	db	 64, 65, 66, 67, 68, 69,  0,  0
-	db	 70, 71, 72, 73, 74, 75,  0, 76
-	db	 77, 78, 79, 80, 81, 82, 83, 84
-	db	  0,  0, 85, 86, 87, 88, 89, 90
-	db	 91, 92,  0,  0,  0,  0,  0, 93
-	db	 94, 95, 96, 97, 98, 99,100,101
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,  0,  0,  0,  0
-	db	102,103,  0,  0,  0,  0,  0,  0
-	db	  0,  0,  0,  0,104,105,106,107
-	db	  0,108,  0,  0,  0,  0,  0,  0
-	db	109,  0,  0,  0,  0,  0,  0,  0
-	db	110,  0,  0,  0,  0,  0,  0,  0
-	db	111,  0,  0,  0,  0,  0,  0,  0
-	db	112,113,  0,  0,114,115,  0,  0
-	db	  0,116,  0,  0,  0,  0,  0,  0
-	db	117,118,119,120,121,  0,  0,  0
-	db	  0,122,  0,  0,  0,  0,  0,  0
-	db	123,  0,  0,  0,  0,  0,  0,  0
-
-;	This is the table of mnemonics that change in the presence of a WAIT
-;	instruction.
-
-wtab1	dw	  802,  801,  800,  803,  349,  414,  804,  351
-	dw	  350,  816,  415
-wtab2	dw	  603,  806,  846,  928,  981, 1220, 1237, 1277
-	dw	 1285, 1301, 1301
-N_WTAB	equ	11
-
-;	This is the table for operands which have a different mnemonic for
-;	their 32 bit versions.
-
-ltab1	dw	  152,  167,  153,  109,  207,  227,  173,  165
-	dw	  111,   97,  157,   96,  156,  175,  171
-ltab2	dw	  487,  430,  115, 1487, 1537, 1584, 1834, 1923
-	dw	 2004, 2033, 2048, 2071, 2088, 2202, 2543
-N_LTAB	equ	15
-
-;	This is the table of lockable instructions
-
-locktab	dw	  266,  258,   16,   17,  264,  256,    0,    1
-	dw	  268,  260,   32,   33,  667,  751,  659,  750
-	dw	  651,  749,  656,  657,  737,  305,  736,  304
-	dw	  299,  298,  265,  257,    8,    9,  267,  259
-	dw	   24,   25,  269,  261,   40,   41,  672,  673
-	dw	  134,  135,  270,  262,   48,   49
-N_LOCK	equ	46
-
-;	Equates used in the assembly-language code.
-
-SPARSE_BASE	equ	480
-
-SFPGROUP3	equ	800
-
-;-@@-@@-@@-End of auto-generated tables.  You may edit below this point.
-
+	%include "debugtbl.inc"
 
 ;	debug22 - INT 22 (Program terminate) interrupt handler.
 ;	This is for DEBUG itself:  it's a catch-all for the various INT 23
@@ -2298,7 +1765,11 @@ ao23:	mov	al,9		;short
 	jnz	ao23a		;if JECXZ
 	test	byte [varflags],VAR_D32
 	jz	ao23b		;if no ECX given in loop instruction
-ao23a:	inc	ax
+ao23a:
+; JECXZ, LOOPD, LOOPZD and LOOPNZD need a 67h, not a 66h prefix
+	and 	byte [asm_mn_flags],0FEh  ;clear AMF_D32 bit!
+	or  	byte [asm_mn_flags],AMF_A32
+	inc	ax
 ao23b:	xchg	ax,bx
 	xor	cx,cx
 	mov	ax,[di+8]
@@ -3220,7 +2691,18 @@ errorj5:jmp	error
 
 ll:	call	parselw		;parse it
 	jz	ll1		;if request to read program
+	cmp [usepacket],byte 2
+    jb  ll0_1
+    mov dl,al
+    inc dl
+    mov si,0
+    mov ax,7305h
+    stc
+    int 21h
+    jmp ll0_2
+ll0_1:    
 	int	25h
+ll0_2:
 	mov	dx,reading
 	jmp	ww1
 
@@ -3512,6 +2994,10 @@ m5:	pop	si
 	sub	al,'0'
 	mov	[machine],al	;set machine type
 	mov	[mach_87],al	;coprocessor type, too
+    cmp al,3
+    jnc m5_1
+	and [regsdmp],byte 0FEh	;reset 386 register display
+m5_1:    
 	ret
 
 m6:	or	al,TOLOWER
@@ -3830,7 +3316,7 @@ pp11:	mov	ds,[reg_cs]
 
 ;	Ordinary instruction.  Just do a trace.
 
-pp12:	or	word [flags],100h	;set single-step mode
+pp12:	or	word [reg_fl],100h	;set single-step mode
 	call	run
 	mov	dx,int1msg
 
@@ -3909,15 +3395,53 @@ rr:	cmp	al,CR
 	call	dumpregs
 	ret
 
-rr1:	dec	si
+rr1:and al,TOUPPER
+	cmp al,'X'
+    jne rr1x
+    lodsb
+    cmp al,CR
+    jne no386_5    
+    cmp [machine],byte 3
+    jb  rr1_w
+    xor [regsdmp],byte 1
+    mov ax,"n "
+    jnz rr1_x1
+    mov ax,"ff"
+rr1_x1    
+	mov word [regs386s],ax
+	mov	di,line_out
+    mov si,regs386
+    call showstring
+    call putsline
+rr1_w:    
+    ret
+rr1x:    
+	cmp al,'N'
+    jne rr1y
+    lodsb
+    cmp al,CR
+    jne no386_5    
+    cmp [has_87],byte 0
+    jz  rr1x_1
+    call dumpregsF
+rr1x_1:    
+    ret
+rr1y:
+	dec	si
 	lodsw
 	and	ax,TOUPPER_W
 	mov	di,regnames
 	mov	cx,13
+    cmp [machine],byte 3
+    jb no386_4
+    add cx,2
+no386_4    
 	repne	scasw
 	mov	bx,di
 	mov	di,line_out
 	jne	rr2		;if not found
+    cmp [si],byte 20h	;avoid "ES" to be found for "ESI" or "ESP"
+    ja rr2
 	stosw			;print register name
 	mov	al,' '
 	stosb
@@ -3972,16 +3496,63 @@ rr3:	cmp	al,CR
 	ja	rr4		;if we're clearing
 	mov	ax,[di-16-2]
 	not	ax
-	and	[flags],ax
+	and	[reg_fl],ax
 	jmp	rr5
 
 rr4:	mov	ax,[di-32-2]
-	or	[flags],ax
+	or	[reg_fl],ax
 
 rr5:	call	skipcomma
 	jmp	rr3		;if done
 
-rr6:	dec	si		;back up one before flagging an error
+rr6:
+	cmp [machine],byte 3
+    jb  no386_5
+    cmp al,'E'
+    jnz no386_5
+    lodsb
+    and al,TOUPPER
+    xchg al,ah
+    mov cx,8
+	mov	di,regnames
+	repne	scasw
+	jne	no386_5
+	mov	bx,di
+	mov	di,line_out
+    mov [di],byte 'E'
+    inc di
+    stosw
+	mov	al,' '
+	stosb
+	sub	bx,regnames+2
+	call	skipcomma	;skip white spaces
+	cmp	al,CR
+	jne	rr1aX   	;if not end of line
+	push	bx		;save bx for later
+	mov	ax,[bx+regshi]
+	call	hexword
+	mov	ax,[bx+regs]
+	call	hexword
+    
+	call	getline0	;prompt for new value
+	pop	bx
+	cmp	al,CR
+	je	rr1b		;if no change required
+rr1aX:
+	push	bx
+	call	getdbl
+    mov		cx,bx
+	pop		bx
+	call	chkeol		;expect end of line here
+	mov	[bx+regs],dx	;save new value
+	mov	[bx+regshi],cx	;save new value
+	cmp	bx,reg_ip - regs
+	jne	rr1bX		;if not changing IP
+	mov	byte [prg_trm],0	;clear flag
+rr1bX:	ret
+    
+no386_5    
+	dec	si		;back up one before flagging an error
 errorj9:jmp	error
 
 ;	S command - search for a string of bytes.
@@ -4053,19 +3624,100 @@ sss3:	jmp	unhack		;undo the interrupt vector hack, restore es,
 
 ;	T command - Trace.
 
-tt:	call	parse_pt	;process arguments
+tt:
+	mov		ah,al
+    and		ah,TOUPPER
+    cmp		ah,'M'
+    jnz		isnotmodeset
+	call	skipcomma
+    cmp     al,CR
+    jz      ismodeget
+    call	getword
+    cmp		dx,1
+	ja		error    
+	call	chkeol		;expect end of line here
+    mov		[tmode],dl
+;    ret
+ismodeget:
+	mov		al,[tmode]
+    add		al,'0'
+    mov		[tmodev],al
+	mov	di,line_out
+    mov si,tmodes
+    call showstring
+    mov si,tmode0
+    cmp  byte [tmode],0
+    jz   ismg_1
+    mov si,tmode1
+ismg_1:
+    call showstring
+    call putsline
+	ret
+isnotmodeset:    
+	call	parse_pt	;process arguments
 
 ;	Do it <count> times.
 
 tt1:	push	cx
-	or	word [flags],100h	;set single-step mode
+%if 1
+    cmp [tmode], byte 0
+    jz  isstdtrace
+    mov es,[reg_cs]
+    mov bx,[reg_ip]
+    cmp [es:bx],byte 0CDh
+    jnz isstdtrace
+    mov bl,[es:bx+1]
+    cmp bl,1
+    jz  isstdtrace
+    cmp bl,3
+    jnz emuint
+isstdtrace:
+%endif
+	or	word [reg_fl],100h	;set single-step mode
+    mov es,[reg_cs]
+    mov bx,[reg_ip]
+    cmp byte [es:bx],9Ch	;opcode "PUSHF"?
+    jnz isnotpushf
+    call run
+    mov es,[reg_ss]
+    mov bx,[reg_sp]
+    and byte [es:bx+1],0FEh
+    push ds
+    pop es
+    jmp tt1_2
+isnotpushf:    
 	call	run
+tt1_2:    
 	cmp	word [run_int],int1msg
 	jne	tt2		;if some other interrupt
+tt1_1:    
 	call	dumpregs
 	pop	cx
 	loop	tt1
 	ret
+
+emuint:    
+    mov bh,0
+    xor ax,ax
+    mov es,ax
+    shl bx,2
+    les bx,[es:bx]
+    mov ax,es
+    xchg bx,[reg_ip]
+    xchg ax,[reg_cs]
+    mov dx,[reg_fl]
+    mov di,[reg_sp]
+    mov es,[reg_ss]
+    sub di,6
+    mov [reg_sp],di
+    mov [es:di+0],bx
+    mov [es:di+2],ax
+    mov [es:di+4],dx
+    and dh, 0FCh
+    mov [reg_fl],dx
+    push ds
+    pop es
+    jmp tt1_1
 
 ;	Print message about unexpected interrupt, dump registers, and end
 ;	command.  This code is also used by the G and P commands.
@@ -4111,11 +3763,50 @@ uu3:	push	cx
 	jnb	uu3		;if we haven't reached the goal
 uu4:	ret
 
+lockdrive:
+    pusha
+    mov bl,al
+    inc bl
+    mov bh,0
+    mov cx,084Ah
+    mov dx,0001h
+    mov ax,440Dh
+    int 21h
+    popa
+    ret
+unlockdrive:
+    pusha
+    mov bl,al
+    inc bl
+    mov bh,0
+    mov cx,086Ah
+    mov dx,0001h
+    mov ax,440Dh
+    int 21h
+    popa
+    ret
+
+
 ;	W command - write a program, or disk sectors, to disk.
 
 ww:	call	parselw		;parse it
 	jz	ww4		;if request to write program
+	cmp [usepacket],byte 2
+    jb  ww0_1
+    call lockdrive
+    mov dl,al
+    inc dl
+    mov si,6001h	;write, assume "file data"
+    mov ax,7305h
+    stc
+    int 21h
+    pushf
+    call unlockdrive
+    popf
+    jmp ww0_2
+ww0_1:    
 	int	26h
+ww0_2:
 	mov	dx,writing
 ww1:	mov	bx,cs		;restore segment registers
 	mov	ds,bx
@@ -4268,6 +3959,8 @@ xx:	cmp	al,'?'
 	je	xd		;if XD command
 	cmp	al,'m'
 	je	xm		;if XM command
+	cmp	al,'r'
+	je	xr		;if XR command
 	cmp	al,'s'
 	je	xs		;if XS command
 	jmp	error
@@ -4282,7 +3975,11 @@ xa:	call	emschk
 	call	getword		;get argument into DX
 	call	chkeol		;expect end of line here
 	mov	bx,dx
-	mov	ah,43h		;allocate handle
+	mov	ah,43h			;allocate handle
+    and bx,bx
+    jnz nonullcnt
+    mov ax,5A00h		;use the EMS 4.0 version to alloc 0 pages
+nonullcnt:    
 	call	callems
 	xchg	ax,dx		;mov ax,dx
 	mov	di,xaans1
@@ -4303,6 +4000,21 @@ xd:	call	emschk
 	call	hexword
 	mov	dx,xdans
 	jmp	int21ah9	;print string and return
+
+;	XR - Reallocate EMS handle.
+
+xr:	call	emschk
+	call	skipcomma
+	call	getword		;get handle argument into DX
+	mov		bx,dx
+	call	skipcomma
+	call	getword		;get count argument into DX
+	call	chkeol		;expect end of line here
+    xchg	bx,dx
+	mov	ah,51h			;reallocate handle
+	call	callems
+	mov	dx,xrans
+	jmp	int21ah9		;print string and return
 
 ;	XM - Map EMS memory to physical page.
 
@@ -4362,6 +4074,8 @@ xs2:	inc	dl		;end of loop
 xs3:	mov	ah,4dh		;function 14 - get all handle pages
 	mov	di,line_out
 	call	callems
+    and bx,bx
+    jz xs5
 	mov	si,di
 xs4:	lodsw
 	xchg	ax,dx
@@ -4379,9 +4093,12 @@ xs5:	mov	dx,crlf
 	mov	ax,5800h	;function 25 - get mappable phys. address array
 	mov	di,line_out	;address to put array
 	call	callems
+	mov	dx,xsnopgs
+    jcxz xs7        ;NO mappable pages!
+    
 	mov	si,di
-
-xs6:	push	cx
+xs6:
+    push cx
 	lodsw
 	mov	di,xsstr2b
 	call	hexword
@@ -4391,10 +4108,15 @@ xs6:	push	cx
 	mov	dx,xsstr2
 	call	int21ah9	;print string
 	pop	cx		;end of loop
-	loop	xs6
-
+    test cl,1
+    jz xs_nonl
 	mov	dx,crlf		;blank line
-	call	int21ah9	;print string
+	call int21ah9	;print string
+xs_nonl:
+	loop xs6
+	mov	dx,crlf		;blank line
+xs7:
+	call int21ah9	;print string
 
 ;	Finally, print the cumulative totals.
 
@@ -4433,18 +4155,27 @@ ce3:	jmp	prnquit		;print string and quit
 
 ;	Check for EMS
 
-emschk:	push	si		;save si
-
+emschk:
 	mov	ax,3567h	;get interrupt vector 67h
 	int	21h
-	mov	si,emmname
+    mov ax,es
+    or  ax,bx
+    jz  echk2
+    mov ah,46h		;get version
+    int 67h
+    and ah,ah
+    jnz echk2
+%if 0    
+	push si		;save si
+	mov	si,emmname	;checking for "EMMXXXX0" isn't a good check
 	mov	di,0ah
 	mov	cx,4
 	repe	cmpsw
+	pop	si		;restore si
+%endif    
 	push	cs		;restore es
 	pop	es
-	pop	si		;restore si
-	jne	echk2		;if EMS not installed
+;;	jne	echk2		;if EMS not installed
 echk1:	ret
 
 echk2:	mov	dx,emsnot
@@ -4570,6 +4301,29 @@ run:	call	seteq		;set CS:IP to '=' address
 	sub	sp,[spadjust]
 	mov	[SPSAV],sp
 	cli
+    cmp [machine],byte 3
+    jb  no386
+    mov fs,[reg_fs]
+    mov gs,[reg_gs]
+    mov cl,16
+    mov ax,[regh_eax]
+    shl eax,cl
+    mov bx,[regh_ebx]
+    shl ebx,cl
+    mov dx,[regh_edx]
+    shl edx,cl
+    mov bp,[regh_ebp]
+    shl ebp,cl
+    mov si,[regh_esi]
+    shl esi,cl
+    mov di,[regh_edi]
+    shl edi,cl
+    mov cx,[regh_ecx]
+    shl ecx,16
+    push word [regh_esp]
+    push sp
+    pop esp
+no386
 	mov	sp,regs
 	pop	ax
 	pop	bx
@@ -4583,7 +4337,7 @@ run:	call	seteq		;set CS:IP to '=' address
 	pop	es
 	pop	ss
 	mov	sp,[cs:reg_sp]	;restore program stack
-	push	word [cs:flags]
+	push	word [cs:reg_fl]
 	push	word [cs:reg_cs]
 	push	word [cs:reg_ip]
 	iret			;jump to program
@@ -4594,7 +4348,7 @@ int22:	cli
 	mov	word [cs:run_int],progtrm	;remember interrupt type
 	mov	[cs:reg_cs],cs		;put in dummy value for CS:IP
 	mov	word [cs:reg_ip],0
-	mov	word [cs:flags],200h
+	mov	word [cs:reg_fl],200h
 	mov	byte [cs:running],0
 	mov	byte [cs:prg_trm],1
 	jmp	intrtn1		;jump to register saving routine (sort of)
@@ -4620,7 +4374,7 @@ intr3:	mov	word [cs:run_int],int3msg	;remember interrupt type
 intrtn:	cli			;just in case
 	pop	word [cs:reg_ip]	;recover things from stack
 	pop	word [cs:reg_cs]
-	pop	word [cs:flags]
+	pop	word [cs:reg_fl]
 intrtn1:mov	[cs:reg_ss],ss	;save stack position
 	mov	[cs:reg_sp],sp
 	mov	sp,cs		;mov ss,cs
@@ -4641,10 +4395,41 @@ intrtn1:mov	[cs:reg_ss],ss	;save stack position
 ;	Clean up.
 
 	mov	sp,[cs:run_sp]	;restore running stack
-	sti			;interrupts back on
 	cld			;clear direction flag
-	push	cs		;reestablish DS
+	push cs		;reestablish DS
 	pop	ds
+
+	cmp     [machine],byte 3
+    jb      no386_1
+	mov		word [reg_fs],fs
+	mov		word [reg_gs],gs
+    push	eax
+    pop		ax
+    pop		word [regh_eax]
+    push	ebx
+    pop		bx
+    pop		word [regh_ebx]
+    push	ecx
+    pop		cx
+    pop		word [regh_ecx]
+    push	edx
+    pop		dx
+    pop		word [regh_edx]
+    push	ebp
+    pop		bp
+    pop		word [regh_ebp]
+    push	esi
+    pop		si
+    pop		word [regh_esi]
+    push	edi
+    pop		di
+    pop		word [regh_edi]
+    mov 	eax,esp
+    shr		eax,16
+    mov		[regh_esp],ax
+no386_1
+	sti			;interrupts back on
+
 	mov	ax,3523h	;get interrupt vector 23h into ES:BX
 	int	21h
 	mov	[run2324],bx
@@ -4666,7 +4451,7 @@ intrtn1:mov	[cs:reg_ss],ss	;save stack position
 	int	21h
 	mov	ds,bx		;reestablish DS and ES
 	mov	es,bx
-	and	word [flags],~100h	;clear single-step interrupt
+	and	word [reg_fl],~100h	;clear single-step interrupt
 
 ;	Return.
 
@@ -5625,13 +5410,25 @@ da22:	mov	cx,N_WTAB
 	mov	ah,PREWAIT
 	test	al,ah
 	jnz	da23		;if there's a WAIT prefix hanging
+
 	mov	cx,N_LTAB
 	mov	bx,ltab1
 	mov	dx,2*N_LTAB-2
 	mov	ah,PRE32D
 	test	al,ah
-	jz	da24		;if it's not a 32-bit prefix that's hanging
-da23:	or	[preused],ah	;mark this prefix as used
+	jnz da23		;if it's not a 32-bit prefix that's hanging
+
+	mov	cx,N_LTABX
+	mov	bx,ltab1X
+	mov	dx,2*N_LTABX-2
+	mov	ah,PRE32A
+	test	al,ah
+	jnz da23		;if it's not a 32-bit prefix that's hanging
+
+	jmp	da24
+
+da23:
+	or	[preused],ah	;mark this prefix as used
 	push	di
 	mov	di,bx
 	mov	ax,[index]
@@ -6008,6 +5805,13 @@ dop23:	mov	al,[regmem]
 	cmp	al,4
 	jne	dop28		;if no SIB
 	mov	al,[sibbyte]
+%if 1               ;bugfix: make 'u' correctly handle [ESP],[ESP+x]
+    cmp al,24h
+    jnz noesp
+    mov al,4
+    jmp dop28
+noesp:    
+%endif
 	and	al,7
 	cmp	al,5
 	jne	dop24		;if not [EBP]
@@ -6606,17 +6410,40 @@ dischk32d:
 dumpregs:mov	si,regs
 	mov	bx,regnames
 	mov	di,line_out
+	mov bp,regshi
 	mov	cx,8
+    test [regsdmp],byte 1
+    jz no386_2
+    mov cl,6
+no386_2
 	call	dmpr1		;print first row
 	push	bx
 	call	trimputs
 	pop	bx
 	mov	di,line_out
 	mov	cl,5
+    test [regsdmp],byte 1
+    jz no386_3
+    mov cl,2
+no386_3
 	call	dmpr1
-	mov	al,' '		;add a space
-	stosb
+;	mov	al,' '		;add a space
+;	stosb
+    test [regsdmp],byte 1
+    jz no386_31
+    push	bx
+    push	si
 	call	dmpflags
+	call	trimputs
+    pop		si
+    pop		bx
+	mov		di,line_out
+    mov     cl,7
+    call    dmpr1_1
+    jmp     no386_32
+no386_31
+	call	dmpflags
+no386_32    
 	call	trimputs
 	mov	ax,[reg_ip]
 	mov	di,u_addr
@@ -6628,10 +6455,15 @@ dumpregs:mov	si,regs
 	mov	ax,[reg_ip]
 	mov	[u_addr],ax
 	ret
+    
 
 ;	Function to print multiple register entries.
 
-dmpr1:	mov	ax,[bx]
+dmpr1:
+	test [regsdmp],byte 1
+    jnz dmpr1X
+dmpr1_1:
+    mov	ax,[bx]
 	inc	bx
 	inc	bx
 	stosw
@@ -6641,15 +6473,156 @@ dmpr1:	mov	ax,[bx]
 	push	cx
 	call	hexword
 	pop	cx
-	mov	ax,'  '
+	mov	al,' '
+	stosb
+	loop	dmpr1_1
+	ret
+;	Function to print multiple register entries.
+
+dmpr1X:	
+	mov al,'E'
+    stosb
+	mov	ax,[bx]
+	inc	bx
+	inc	bx
 	stosw
-	loop	dmpr1
+	mov	al,'='
+	stosb
+    xchg bp,si
+	lodsw
+	push	cx
+	call	hexword
+    xchg bp,si
+	lodsw
+	call	hexword
+	pop	cx
+	mov	al,' '
+	stosb
+	loop	dmpr1X
+	ret
+
+;   DUMPREGSF - Dump Floating Point Registers 
+
+;fregnames 
+;	db "CW", 2, "SW", 2, "TW", 2, "IP", 4, "CS", 2, "OO", 4, "OS", 2
+fregnames
+	db "CW", "SW", "TW"
+    db "OPC=", "IP=", "DP="
+dEmpty db "<empty>              "
+
+dumpregsF:
+	mov	di,line_out
+	mov	si,fregnames
+    sub sp,7*2+8*10
+    mov bp,sp
+    fnsave [bp]
+    mov cx,3
+nextfpr:    
+	movsw
+    mov al,'='
+    stosb
+    push cx
+    mov ax,[bp+0]
+    call hexword
+    pop cx
+    mov al,' '
+    stosb
+    add bp,2
+    loop nextfpr
+    
+    movsw
+    movsw
+    mov ax,[bp+2]
+    and ax,0FFFh
+    call hexword
+    mov al,' '
+    stosb
+    
+    mov cx,2
+nextfp:    
+    push cx
+    movsw
+    movsb
+    mov al,[bp+2+1]
+    shr al,4
+    call hexnyb
+    mov ax,[bp+0]
+    call hexword
+    mov al,' '
+    stosb
+    add bp,4
+    pop cx
+    loop nextfp
+    
+	call trimputs
+    
+    mov si,[bp-5*2]
+    mov cx,[bp-6*2]	;get TOP
+
+    shr cx, 11
+    and cl, 7
+    shl cl, 1
+    ror si, cl
+	mov	di,line_out
+	mov cx,8
+nextst:    
+    mov ax,"ST"
+    stosw
+    mov al,8
+    sub al,cl
+    add al,'0'
+    stosb
+    mov al,'='
+    stosb
+    mov ax,si
+    ror si, 2
+    and al,3
+    cmp al,3
+    jnz notinval
+    push si
+    push cx
+	mov si, dEmpty
+    mov cx, 21
+    rep movsb
+    pop cx
+    pop si
+    jmp regoutdone
+notinval
+    push cx
+    mov ax,[bp+8]
+    call hexword
+    mov al,'.'
+    stosb
+    mov ax,[bp+6]
+    call hexword
+    mov ax,[bp+4]
+    call hexword
+    mov ax,[bp+2]
+    call hexword
+    mov ax,[bp+0]
+    call hexword
+    pop cx
+regoutdone:
+    mov al,' '
+    stosb
+    test cl,1
+    jz nocr
+    push cx
+	call trimputs
+	mov	di,line_out
+    pop cx
+nocr:    
+	add bp,10
+    loop nextst
+    mov bp,sp
+    frstor [bp]
+    add sp,7*2+8*10
 	ret
 
 ;	DMPFLAGS - Dump flags output.
 
 dmpflags:
-	mov	bx,[flags]
+	mov	bx,[reg_fl]
 	mov	si,flgbits
 	mov	cx,8
 dmpf1:	mov	ax,[si+16]
@@ -6664,7 +6637,7 @@ dmpf2:	stosw
 	loop	dmpf1
 	ret
 
-flgbits	dw	800h,400h,100h,80h,40h,10h,4,1
+flgbits	dw	800h,400h,200h,80h,40h,10h,4,1
 flgnams	dw	'NV','UP','DI','PL','NZ','NA','PO','NC'
 flgnons	dw	'OV','DN','EI','NG','ZR','AC','PE','CY'
 
@@ -6808,7 +6781,7 @@ inttab	dw	intr0		;table of interrupt initialization stuff
 	dw	debug22
 	db	22h
 
-imsg1	db	'DEBUG version 0.98.  Debugger.',CR,LF,CR,LF
+imsg1	db	'DEBUG version 0.99g.  Debugger.',CR,LF,CR,LF
 	db	'Usage:	DEBUG [[drive:][path]progname [arglist]]',CR,LF,CR,LF
 	db	'  progname	(executable) file to debug or examine',CR,LF
 	db	'  arglist	parameters given to program',CR,LF,CR,LF
@@ -6844,6 +6817,9 @@ init1:	mov	ax,3000h	;check DOS version
 	cmp	ax,31fh
 	jb	init2		;if early, then don't use new INT 25h method
 	inc	byte [usepacket]
+    cmp ax,070Ah
+    jb  init2
+	inc	byte [usepacket]
 
 ;	Determine the processor type.  This is adapted from code in the
 ;	Pentium<tm> Family User's Manual, Volume 3:  Architecture and
@@ -6861,13 +6837,13 @@ init1:	mov	ax,3000h	;check DOS version
 init2:	pushf			;get original flags into AX
 	pop	ax
 	mov	cx,ax		;save them
-	and	ax,0fffh	;clear bits 12-15
+	and	ah,0fh		;clear bits 12-15
 	push	ax		;save new flags value on stack
 	popf			;replace current flags value
 	pushf			;get new flags
 	pop	ax		;store new flags in AX
-	and	ax,0f000h	;check to see whether bits 12-15 are set
-	cmp	ax,0f000h
+	and	ah,0f0h		;check to see whether bits 12-15 are set
+	cmp	ah,0f0h
 	je	init6		;if 8086 or 80186 (can't tell them apart)
 
 ;	Intel 286 CPU check.
@@ -6879,7 +6855,7 @@ init2:	pushf			;get original flags into AX
 	popf			;replace current flags value
 	pushf			;get new flags
 	pop	ax		;store new flags in AX
-	test	ax,0f000h	;if bits 12-15 clear, CPU = 80286
+	test	ah,0f0h	;if bits 12-15 clear, CPU = 80286
 	mov	byte [machine],2
 	jz	init6		;if 80286
 
@@ -6890,7 +6866,7 @@ init2:	pushf			;get original flags into AX
 
 ;	It is now safe to use 32-bit opcode/operands.
 
-	cpu	386
+	cpu	386 fpu
 
 	inc	byte [machine]
 	mov	bx,sp		;save current stack pointer to align
@@ -6947,7 +6923,7 @@ init5:	push	ecx
 	popfd			;restore AC bit in EFLAGS first
 	mov	sp,bx		;restore original stack pointer
 
-	cpu	8086		;back to 1980s technology
+	cpu	8086 fpu	;back to 1980s technology
 
 ;	Next determine the type of FPU in a system and set the mach_87
 ;	variable with the appropriate value.  All registers are used by
@@ -6965,6 +6941,10 @@ init5:	push	ecx
 
 init6:	mov	al,[machine]
 	mov	[mach_87],al	;by default, set mach_87 to machine
+    inc byte [has_87]
+    cmp al,5			;a Pentium or above always will have a FPU
+    jnc init7
+    dec byte [has_87]
 
 	fninit			;reset FP status word
 	mov	word [fp_status],5a5ah	;restore temp word to nonzero value

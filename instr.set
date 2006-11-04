@@ -9,6 +9,7 @@
 #	The first field is the opcode field.  It looks like the following:
 #		_^n+xxx
 #	   or	_^n+xxx/xxx
+#	   or	_^n+xxx#xxx
 #	   or	_^n+xxx*xxx
 #	Here:
 #		_   (if present) signifies that the line applies only to the
@@ -22,8 +23,10 @@
 #		    "db" in the area "mnlist."
 #		xxx is an op code mnemonic.
 #
-#	Two opcodes separated by a slash mean that the second one is the 32-bit
-#	variant of the first.
+#	Two opcodes separated by a '/' mean that the second one is the 32-bit
+#	variant of the first, and a 66h prefix will switch.
+#	Two opcodes separated by a '#' mean that the second one is the 32-bit
+#	variant of the first, and a 67h prefix will switch.
 #	Two opcodes separated by a star mean that the first occurs with a wait
 #	instruction; the second, without.
 
@@ -241,7 +244,7 @@ jae 73:A 0f83:c;3
 jb 72:A 0f82:c;3
 jbe 76:A 0f86:c;3
 _jc 72:A 0f82:c;3
-jcxz/jecxz e3:A
+jcxz#jecxz e3:A
 _je 74:A 0f84:c;3
 jg 7f:A 0f8f:c;3
 jge 7d:A 0f8d:c;3
@@ -284,11 +287,11 @@ lmsw 0f01/6:C;2
 +lock f0*
 lodsb ac.
 lodsw/lodsd ad.
-loop e2:L _e2:A
-_loope e1:L e1:A
-loopz e1:L _e1:A
-_loopne e0:L e0:A
-loopnz e0:L _e0:A
+loop#loopd e2:L _e2:A
+_loope#looped e1:L e1:A
+loopz#loopzd e1:L _e1:A
+_loopne#loopned e0:L e0:A
+loopnz#loopnzd e0:L _e0:A
 lsl 0f03:8;2
 ltr 0f00/3:C;2
 mov a0:F a2:G 88:4 8a:5 8c:D 8e:E b0:H b8:HH c6/0:2 0f20:RC;3 0f22:CR;3 0f21:RD;3 0f23:DR;3 0f24:RT;3 0f26:TR;3

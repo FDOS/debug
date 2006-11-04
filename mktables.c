@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #if	! DOS
 #include <unistd.h>
+#else
+#include <io.h>
 #endif
 #include <stdio.h>
 #include <stdarg.h>
@@ -37,18 +39,14 @@
 #define	cdecl
 #endif
 
-#define	MARKLINE1	";-@@-@@-@@-Do not edit these tables!  " \
-	"They have been automatically generated." CRLF
-#define	MARKLINE2	";-@@-@@-@@-End of auto-generated tables.  " \
-	"You may edit below this point." CRLF
-
 #define	MAX_OL_TYPES	80
 #define	MAX_N_ORDS	30
 #define	LINELEN		132
 #define	MAX_ASM_TAB	2048
 #define	MAX_MNRECS	400
 #define	MAX_SAVED_MNEMS	10
-#define	MAX_SLASH_ENTRIES 20
+#define	MAX_SLASH_ENTRIES 15
+#define	MAX_HASH_ENTRIES 15
 #define	MAX_STAR_ENTRIES 15
 #define	MAX_LOCKTAB_ENTRIES 50
 #define	MAX_AGROUP_ENTRIES 14
@@ -121,6 +119,10 @@ int	saved_mnem[MAX_SAVED_MNEMS];
 int	n_slash_entries;
 int	slashtab_seq[MAX_SLASH_ENTRIES];
 int	slashtab_mn[MAX_SLASH_ENTRIES];
+
+int	n_hash_entries;
+int	hashtab_seq[MAX_HASH_ENTRIES];
+int	hashtab_mn[MAX_HASH_ENTRIES];
 
 int	n_star_entries;
 int	startab_seq[MAX_STAR_ENTRIES];
@@ -552,7 +554,7 @@ read_is(FILE *f1)
 	while (getline(f1)) {	/* loop over lines in the file */
 	    int mnem;
 	    int mn_alt;
-	    char *p, *p0, *pslash, *pstar;
+	    char *p, *p0, *pslash, *phash, *pstar;
 	    Boolean asm_only_line;
 	    unsigned char atab_addendum;
 
@@ -572,26 +574,36 @@ read_is(FILE *f1)
 		atab_addendum = uptab[*p0++ - '0'];
 	    }
 	    p = strchr(p0, ' ');
-	    if (p == NULL) p = p0 + strlen(p0);
+        if (p == NULL) p = p0 + strlen(p0);
+
 	    pslash = memchr(p0, '/', p - p0);
 	    if (pslash != NULL) {
-		mnem = entermn(p0, pslash);
-		++mnlist[mnem].asmoffset;	/* this one isn't 32 bit */
-		++pslash;
-		mn_alt = entermn(pslash, p);
-		add_to_asmtab(ASM_D32);
-	    }
-	    else {
-		pstar = memchr(p0, '*', p - p0);
-		if (pstar != NULL) {
-		    mn_alt = entermn(p0, pstar);	/* note the reversal */
-		    ++pstar;
-		    add_to_asmtab(ASM_WAIT);
-		    mnem = entermn(pstar, p);
-		}
-		else
-		    mnem = entermn(p0, p);
-	    }
+            mnem = entermn(p0, pslash);
+            ++mnlist[mnem].asmoffset;	/* this one isn't 32 bit */
+            ++pslash;
+            mn_alt = entermn(pslash, p);
+            add_to_asmtab(ASM_D32);
+	    } else {
+            phash = memchr(p0, '#', p - p0);
+            if (phash != NULL) {
+                mnem = entermn(p0, phash);
+                ++mnlist[mnem].asmoffset;	/* this one isn't 32 bit */
+                ++phash;
+                mn_alt = entermn(phash, p);
+                add_to_asmtab(ASM_D32);
+            } else {
+                pstar = memchr(p0, '*', p - p0);
+                if (pstar != NULL) {
+                    mn_alt = entermn(p0, pstar);	/* note the reversal */
+                    ++pstar;
+                    add_to_asmtab(ASM_WAIT);
+                    mnem = entermn(pstar, p);
+                }
+                else
+                    mnem = entermn(p0, p);
+            }
+        }
+
 	    if (atab_addendum != '\0') add_to_asmtab(atab_addendum);
 
 	    atab_addendum = ASM_END;
@@ -733,20 +745,29 @@ read_is(FILE *f1)
 			add_to_asmtab(atab_xtra);
 		}
 		if (pslash != NULL) {
-		    if (n_slash_entries >= MAX_SLASH_ENTRIES)
-			linenofail("Too many slash entries");
+                    if (n_slash_entries >= MAX_SLASH_ENTRIES)
+                        linenofail("Too many slash entries");
 		    slashtab_seq[n_slash_entries] = i;
 		    slashtab_mn[n_slash_entries] = mn_alt;
 		    ++n_slash_entries;
-		}
-		else if (pstar != NULL) {
-		    if (n_star_entries >= MAX_STAR_ENTRIES)
-			linenofail("Too many star entries");
-		    startab_seq[n_star_entries] = i;
-		    startab_mn[n_star_entries] = mn_alt;
-		    ++n_star_entries;
-		}
-	    }
+                } else {
+                    if (phash != NULL) {
+                        if (n_hash_entries >= MAX_HASH_ENTRIES)
+                            linenofail("Too many hash entries");
+                        hashtab_seq[n_hash_entries] = i;
+                        hashtab_mn[n_hash_entries] = mn_alt;
+                        ++n_hash_entries;
+                    } else {
+                        if (pstar != NULL) {
+                            if (n_star_entries >= MAX_STAR_ENTRIES)
+                                linenofail("Too many star entries");
+                            startab_seq[n_star_entries] = i;
+                            startab_mn[n_star_entries] = mn_alt;
+                            ++n_star_entries;
+                        }
+                    }
+                }
+            }
 	    if (*p != '\0')
 		linenofail("Syntax error.");
 	    if (atab_addendum != '\0')
@@ -794,7 +815,7 @@ put_dw(FILE *f2, const char *label, int *datap, int n)
 	    for (i = (n <= 8 ? n : 8); i > 0; --i) {
 		fputs(initstr, f2);
 		initstr = ",";
-		fprintf(f2, "%5d", *datap++);
+		fprintf(f2, "0%xh", *datap++);
 	    }
 	    fputs(CRLF, f2);
 	    n -= 8;
@@ -1016,12 +1037,20 @@ dumptables(FILE *f2)
 	fprintf(f2, "N_WTAB\tequ\t%d" CRLF, n_star_entries);
 
 	fputs(CRLF ";\tThis is the table for operands which have a different "
-		"mnemonic for" CRLF ";\ttheir 32 bit versions." CRLF CRLF, f2);
+		"mnemonic for" CRLF ";\ttheir 32 bit versions (66h prefix)." CRLF CRLF, f2);
 	put_dw(f2, "ltab1", slashtab_seq, n_slash_entries);
 	for (i = 0; i < n_slash_entries; ++i)
 	    slashtab_mn[i] = mnlist[slashtab_mn[i]].offset;
 	put_dw(f2, "ltab2", slashtab_mn, n_slash_entries);
 	fprintf(f2, "N_LTAB\tequ\t%d" CRLF, n_slash_entries);
+
+	fputs(CRLF ";\tThis is the table for operands which have a different "
+		"mnemonic for" CRLF ";\ttheir 32 bit versions (67h prefix)." CRLF CRLF, f2);
+	put_dw(f2, "ltab1X", hashtab_seq, n_hash_entries);
+	for (i = 0; i < n_hash_entries; ++i)
+	    hashtab_mn[i] = mnlist[hashtab_mn[i]].offset;
+	put_dw(f2, "ltab2X", hashtab_mn, n_hash_entries);
+	fprintf(f2, "N_LTABX\tequ\t%d" CRLF, n_hash_entries);
 
 	fputs(CRLF ";\tThis is the table of lockable instructions" CRLF CRLF,
 	    f2);
@@ -1124,55 +1153,28 @@ main() {
 	 * Write the file.
 	 */
 
-	f1 = openread("debug.asm");
-	f2 = fopen("debug.tmp", "w");
+	f2 = fopen("debugtbl.tmp", "w");
 	if (f2 == NULL) {
-	    perror("debug.tmp");
+	    perror("debugtbl.tmp");
 	    exit(1);
 	}
 
-	do {
-	    if (fgets(line, LINELEN, f1) == NULL) {
-		fputs("Couldn't find beginning marker line\n", stderr);
-		exit(1);
-	    }
-	    fputs(line, f2);
-	}
-	while (strcmp(line, MARKLINE1) != 0);
-
 	dumptables(f2);
 
-	do {
-	    if (fgets(line, LINELEN, f1) == NULL) {
-		fputs("Couldn't find ending marker line\n", stderr);
-		exit(1);
-	    }
-	}
-	while (strcmp(line, MARKLINE2) != 0);
-
-	do
-	    fputs(line, f2);
-	while (fgets(line, LINELEN, f1) != NULL);
-
-	fclose(f1);    
-	fclose(f2);
+    fclose(f2);
 
 	/*
 	 * Move the file to its original position.
 	 */
 
-#if	DOS
-	if (unlink("debug.old") == -1 && errno != ENOFILE) {
-	    perror("delete debug.old");
+    unlink("debugtbl.old");
+
+	if (rename("debugtbl.inc", "debugtbl.old") == -1) {
+	    perror("rename debugtbl.inc -> debugtbl.old");
 	    return 1;
 	}
-#endif
-	if (rename("debug.asm", "debug.old") == -1) {
-	    perror("rename debug.asm -> debug.old");
-	    return 1;
-	}
-	if (rename("debug.tmp", "debug.asm") == -1) {
-	    perror("rename debug.tmp -> debug.asm");
+	if (rename("debugtbl.tmp", "debugtbl.inc") == -1) {
+	    perror("rename debugtbl.tmp -> debugtbl.inc");
 	    return 1;
 	}
 
