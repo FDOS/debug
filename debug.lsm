@@ -1,7 +1,7 @@
 Begin3
 Title:          debug
-Version:        1.02
-Entered-date:   2006-12-09
+Version:        1.06
+Entered-date:   2007-05-21
 Description:    A program testing and editing tool
 Keywords:       freedos, debug, debugger
 Author:         vojta -at- math.berkeley.edu

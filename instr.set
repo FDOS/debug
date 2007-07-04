@@ -375,7 +375,7 @@ sidt 0f01/1:s;2
 shld 0fa4:Y;3 0fa5:Z;3
 shrd 0fac:Y;3 0fad:Z;3
 sldt 0f00/0:B;2
-smsw 0f01/4:C;2
+smsw 0f01/4:B;2
 stc f9.
 std fd.
 sti fb.

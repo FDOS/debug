@@ -275,7 +275,8 @@ lookupkey(short key)
 
 	for (kp = olkeydict; kp < olkeydict + NUMBER(olkeydict); ++kp)
 	    if (key == kp->key) return kp;
-	linenofail("can't find key");
+    linenofail("can't find key");
+    return NULL;
 }
 
 char *
@@ -400,7 +401,8 @@ getnybble(char c)
 {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-	linenofail("Hex digit expected instead of `%c'", c);
+    linenofail("Hex digit expected instead of `%c'", c);
+    return -1;
 }
 
 /*
