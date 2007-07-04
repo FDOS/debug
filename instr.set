@@ -323,7 +323,7 @@ rdmsr 0f32.;5
 +repe f3*
 +repne f2*
 ret c3. c2:W
-retf cb. ca:W
+retf/retfd cb. ca:W
 rsm 0faa.;5
 sahf 9e.
 _sal d0/4:T d2/4:U c0/4:V;1
