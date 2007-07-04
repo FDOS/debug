@@ -1,5 +1,5 @@
 ;	DEBUG.ASM	NASM assembler source for a clone of DEBUG.COM
-;           Version 1.01, 11/26/2006.
+;           Version 1.02, 11/29/2006.
 
 ;	To assemble, use:
 ;		nasm debug.asm -D PM=0 -O 2 -o debug.com
@@ -78,11 +78,19 @@
 ;       have a corresponding RETFD entry (to switch with prefix 66h)
 ;	    1.01 [26 November 2006] bugfix: MC2 didn't work. Register names
 ;       can be used anywhere where a number is expected as input.
+;	    1.02 [29 November 2006] bugfix: 'i d' and 'o d' didn't work because
+;       the parser assumed 'id' and 'od' commands.  bugfix: 't=' and 'g='
+;       didn't work in protected-mode. bugfix: loading a file at another
+;       location than cs:100h was not supported in versions 0.99 - 1.01.
+;       Debugger can be loaded high.
 ;	To do:
 ;		*.HEX files
 ;		MMX instructions
 ;		Fix disassembler issues (32 bit CS)
 ;		Fix assembler issues (16-bit opcodes if current CS is 32 bit)
+;		Fix RN in protected mode (other structure of FCS and FOP)
+;		better display of floating point registers
+;		modify floating point registers
 
 BS	equ	8
 TAB	equ	9
@@ -149,18 +157,16 @@ run_sp	dw	0		;stack pointer when running
 spadjust dw	40h 	;adjust sp by this amount for save
 pspdbe  dw	0		;debuggee's program segment prefix
 pspdbg  dw  0		;debugger's program segment prefix (always a segment)
-running	db	0		;if there is a running child process
 run2324	dw	0,0,0,0		;interrupt vectors 23 and 24 (when running)
 sav2324	dw	0,0,0,0		;interrupt vectors 23 and 24 (ours)
 hakstat	db	0		;whether we have hacked the vectors or not
 psp22	dw	0,0		;original terminate address in the PSP
 parent	dw	0		;original PSP of process parent (must be next)
-newmem	dw	0		;size of DEBUG if it hasn't shrunk yet
 machine	db	0		;type of this processor
 regsdmp db  0		;bit 0: 1=386 register display
 tmode	db  0		;bit 0: 1=ms-dos compatible trace mode
 has_87	db	0		;if there is a math coprocessor present
-bInDbg  db  0
+bInDbg  db  0		;1=debugger is running
 mach_87	db	0		;type of coprocessor present
 notatty	db	LF		;if standard input is from a file
 switchar db	0		;switch character
@@ -176,7 +182,7 @@ eqflag	db	0		;flag indicating presence of `=' operand
 eqladdr	dw	0,0,0	;address of `=' operand in G or T command
 run_cs	dw	0		;save original CS when running
 run_int	dw	0		;interrupt type that stopped the running
-prg_trm	db	0		;if program has terminated
+bInit	db	0		;0=ensure a valid opcode is at debuggee's CS:IP
 fileext	db	0		;file extension (0 if no file name)
 EXT_OTHER equ	1
 EXT_COM	equ	2
@@ -210,7 +216,7 @@ execblk	dw	0		;(0) copy the parent's environment
 	dw	0,0		;(14) initial SS:SP
 	dw	0,0		;(18) initial CS:IP
 
-;	Register save area.
+;	Register save area (32 words).
 
 regs:
 reg_ax	dw	0		;ax
@@ -228,8 +234,8 @@ reg_cs	dw	0		;cs
 reg_fs	dw	0		;fs
 reg_gs	dw	0		;gs
 
-reg_ip	dw	100h	;ip
-reg_fl	dw	200h	;flags (interrupts enabled)
+reg_ip	dw	0		;ip
+reg_fl	dw	0		;fl(ags)
 
 regshi:
 regh_eax dw 0
@@ -245,7 +251,7 @@ regh_eip dw 0
 regh_efl dw 0
 
 regnames dw	'AX','BX','CX','DX','SP','BP','SI','DI','DS','ES'
-	dw	'SS','CS','FS','GS','IP'
+	dw	'SS','CS','FS','GS','IP','FL'
 
 ;	Instruction set information needed for the 'p' command.
 
@@ -286,7 +292,7 @@ prompt2	db	':'		;prompt for register value
 prompt3	db	'#'		;protected-mode prompt
 %endif
 
-helpmsg	db	DOSNAME, ' ', DBGNAME2, ' v1.01 help screen',CR,LF
+helpmsg	db	DOSNAME, ' ', DBGNAME2, ' v1.02 help screen',CR,LF
 	db	'assemble',9,	'A [address]',CR,LF
 	db	'compare',9,9,	'C range address',CR,LF
 	db	'dump',9,9,		'D [range]',CR,LF
@@ -319,14 +325,14 @@ helpmsg2:
 	db	'unassemble',9,	'U [range]',CR,LF
 	db	'write program',9,'W [address]',CR,LF
 	db	'write sectors',9,'W address drive sector count',CR,LF
-	db	'expanded mem',9,'XA/XD/XM/XR/XS,X? for help',CR,LF
+	db	'expanded mem',9,'XA/XD/XM/XR/XS,X? for help'
 %if PM    
-    db   CR,LF
+    db   CR,LF,CR,LF
 	db  "prompts: '-' = real/v86-mode; '#' = protected-mode"
 %endif    
 crlf	db	CR,LF,'$'
 
-presskey db '<Press a key to continue>$'
+presskey db '[more]$'
 
 xhelpmsg db	'Expanded memory (EMS) commands:',CR,LF
 	db	'  Allocate	XA count',CR,LF
@@ -373,18 +379,18 @@ needsmath db	'[needs math coprocessor]'
 needsmath_L equ	24
 obsolete db	'[obsolete]'
 obsolete_L equ	10
-int0msg	db	'Divide error.',CR,LF,'$'
-int1msg	db	'Unexpected single-step interrupt.',CR,LF,'$'
-int3msg	db	'Unexpected breakpoint interrupt.',CR,LF,'$'
+int0msg	db	'Divide error',CR,LF,'$'
+int1msg	db	'Unexpected single-step interrupt',CR,LF,'$'
+int3msg	db	'Unexpected breakpoint interrupt',CR,LF,'$'
 
 %if PM
 %if 0
-exc6msg	db	'Invalid opcode fault.',CR,LF,'$'
+exc6msg	db	'Invalid opcode fault',CR,LF,'$'
 %endif
 %if 1
-excCmsg	db	'Stack fault.',CR,LF,'$'
+excCmsg	db	'Stack fault',CR,LF,'$'
 %endif
-excDmsg	db	'General protection fault.',CR,LF,'$'
+excDmsg	db	'General protection fault',CR,LF,'$'
 %if EXCCSIP
 excloc	db	'CS:IP='
 exccsip db '    :    '
@@ -392,6 +398,7 @@ exccsip db '    :    '
 %endif        
 excEmsg	db	'Page fault.',CR,LF,'$'
 nodosext db 'Command not supported in protected-mode without a DOS-Extender',CR,LF,'$'
+nopmsupp db 'Command not supported in protected-mode',CR,LF,'$'
 %if DISPHOOK
 dpmihook db 'DPMI entry hooked, new entry='
 dpmihookcsip db '    :    ',CR,LF,'$'
@@ -403,21 +410,20 @@ nodesc	db 'resource not accessible in real-mode',CR,LF,'$'
 descwrong db 'descriptor not accessible',CR,LF,'$'
 gatewrong db 'gate not accessible',CR,LF,'$'
 %endif
-cantwritebp db "Can't write breakpoint.",CR,LF,'$'
+cantwritebp db "Can't write breakpoint",CR,LF,'$'
 
-progtrm	db	'Program terminated normally.',CR,LF,'$'
-trmerr	db	'Program has terminated.',CR,LF,'$'
-nowhexe	db	'EXE and HEX files cannot be written.',CR,LF,'$'
-nownull	db	'Cannot write: no file name given.',CR,LF,'$'
+progtrm	db	CR,LF,'Program terminated normally',CR,LF,'$'
+nowhexe	db	'EXE and HEX files cannot be written',CR,LF,'$'
+nownull	db	'Cannot write: no file name given',CR,LF,'$'
 wwmsg1	db	'Writing $'
-wwmsg2	db	' bytes.',CR,LF,'$'
-diskful	db	'Disk full.',CR,LF,'$'
+wwmsg2	db	' bytes',CR,LF,'$'
+diskful	db	'Disk full',CR,LF,'$'
 wwerr	db	'Error '
-wwerr1	db	'____ opening file.',CR,LF,'$'
-doserr2	db	'File not found.',CR,LF,'$'
-doserr3	db	'Path not found.',CR,LF,'$'
-doserr5	db	'Access denied.',CR,LF,'$'
-doserr8	db	'Insufficient memory.',CR,LF,'$'
+wwerr1	db	'____ opening file',CR,LF,'$'
+doserr2	db	'File not found',CR,LF,'$'
+doserr3	db	'Path not found',CR,LF,'$'
+doserr5	db	'Access denied',CR,LF,'$'
+doserr8	db	'Insufficient memory',CR,LF,'$'
 ;emmname	db	'EMMXXXX0'
 emsnot	db	'EMS not installed',CR,LF,'$'
 emserr1	db	'EMS internal error',CR,LF,'$'
@@ -531,7 +537,7 @@ scratchsel dw 0	;scratch selector used for various purposes
 dpmi32    db 0	;00=16-bit client, else 32-bit client
 bNo2FHook db 0  ;int 2F, ax=1687h is not hooked (win9x dos box, DosEmu?)
 bCSAttr   db 0  ;CS attribute
-bAddr32	  db 0  ;Address attribute
+bAddr32	  db 0  ;Address attribute. if 1, hiword(edx) is valid
 
 exctab:
 	db 0
@@ -920,6 +926,10 @@ cmd3:
 	mov	word [errret],cmd3
     push ds
     pop es
+    call isdebuggeeloaded
+    jnz taskok
+    call createdummytask	;if no task is active, create a dummy one
+taskok:
 	mov	dx,prompt1
 %if PM    
     call ispm
@@ -3469,7 +3479,8 @@ gg3:	dec	si
 
 ;	Now run the program.
 
-gg4:	call	seteq		;make the = operand take effect
+gg4:	
+	call	seteq		;make the = operand take effect
 	call	run
 
 ;	Restore breakpoint bytes.
@@ -3587,6 +3598,12 @@ ii_1:
     jb  ii_2
 	cmp ah,'D'
     jne ii_2
+%if 1    
+    mov ah,[si-2]		;distiguish 'id' and 'i d'
+    and ah,TOUPPER
+    cmp ah,'I'
+    jnz ii_2
+%endif    
     inc bx
     inc bx
     call skipwhite
@@ -3764,7 +3781,33 @@ iea_1:
     ret
 szMSDOS:
 	db "MS-DOS",0
+nodosextinst:
+	mov dx,nodosext
+    jmp int21ah9
 %endif
+
+isdebuggeeloaded:    
+	mov		ax,[pspdbe]
+    cmp		ax,[pspdbg]
+    ret
+    
+;--- ensure a debuggee is loaded
+;--- set SI:DI to CS:IP, preserve AX, BX, DX
+    
+ensuredebuggeeloaded:
+    push ax
+	call isdebuggeeloaded
+    jnz ll5_2
+    push bx
+    push dx
+    call createdummytask
+    mov si,[reg_cs]
+    mov di,[reg_ip]
+	pop dx
+    pop bx
+ll5_2:
+    pop ax
+	ret
 
 ;	L command - read a program, or disk sectors, from disk.
 
@@ -3775,9 +3818,7 @@ ll:
 	call ispm
     jnz ll0_rm
     call isextenderavailable
-    jnc ll0_rm
-	mov dx,nodosext
-    jmp int21ah9
+    jc nodosextinst
 ll0_rm:    
 %endif
 	cmp [cs:usepacket],byte 2
@@ -3797,26 +3838,28 @@ ll0_2:
 
 ;	For .com or .exe files, we can only load at cs:100.  Check that first.
 
-ll1:	test	byte [fileext],EXT_COM+EXT_EXE
-	jz	ll3		;if not .com or .exe file
+ll1:
+	test	byte [fileext],EXT_COM+EXT_EXE
+	jz	ll4		;if not .com or .exe file
 	cmp	bx,[reg_cs]
 	jne	ll2		;if segment is wrong
 	cmp	dx,100h
 	je	ll4		;if address is OK (or not given)
-ll2:	jmp	error		;can only load .com or .exe at cs:100
+ll2:
+	jmp	error		;can only load .com or .exe at cs:100
 
-;	Get length of file
+;	load (any) file (if not .EXE or .COM, load at BX:DX)
 
 ll3:
 	cmp	byte [fileext],0
     jnz ll4
 	jmp	iiret
 
-;	Get length of file
+;	open file and get length
 
 ll4:
-	mov	si,bx		;save destination address
-	mov	di,dx
+	mov	si,bx		;save destination address, segment
+	mov	di,dx		;and offset
 	mov	ax,3d00h	;open file for reading
 	mov	dx,DTA
 	call doscall
@@ -3829,55 +3872,85 @@ ll5:
 	xor	dx,dx
 	int	21h
 
-%if 0
 ;	Split off file types
 ;	At this point:
 ;		bx	file handle
 ;		dx:ax	file length
-;		si:di	load address
+;		si:di	load address (CS:100h for .EXE or .COM)
 
 	test	byte [fileext],EXT_COM | EXT_EXE
 	jnz	ll13		;if .com or .exe file
 
+%if PM
+;--- dont load a file in protected mode, 
+;--- the read loop makes some segment register arithmetic
+	call ispm
+    jnz ll5_1
+    mov dx,nopmsupp
+    call int21ah9
+    jmp ll12
+ll5_1:
+%endif
+
 ;	Load it ourselves.
 ;	For non-.com/.exe files, we just do a read, and set BX:CX to the
 ;	number of bytes read.
+	
+	call ensuredebuggeeloaded	;make sure a debuggee is loaded
+	mov es,[pspdbe]
 
 ;	Check the size against available space.
 
 	push	si
 	push	bx
-	cmp	si,[ALASAP]
+
+	cmp	si,[es:ALASAP]
 	pushf
 	neg	si
 	popf
 	jae	ll6		;if loading past end of mem, allow through ffff
-	add	si,[ALASAP]	;si = number of paragraphs available
-ll6:	mov	cx,4
+	add	si,[es:ALASAP]	;si = number of paragraphs available
+ll6:
+	mov	cx,4
 	xor	bx,bx
-ll7:	shl	si,1
+ll7:
+	shl	si,1
 	rcl	bx,1
 	loop	ll7
 	sub	si,di
-	sbb	bx,0		;bx:si = number of words left
+	sbb	bx,cx  	;bx:si = number of words left
 	jb	ll9		;if already we're out of space
 	cmp	bx,dx
 	jne	ll8
 	cmp	si,ax
-ll8:	jae	ll10		;if not out of space
-ll9:	pop	bx		;out of space
+ll8:
+	jae	ll10		;if not out of space
+ll9:
+	pop	bx		;out of space
 	pop	si
 	mov	dx,doserr8	;not enough memory
 	call	int21ah9	;print string
 	jmp	ll12
 
-ll10:	pop	bx
+ll10:
+	pop	bx
 	pop	si
 
 ;	Store length in registers
 
+; seems a bit unwise to modify registers if a debuggee is running 
+; but MS DEBUG does it as well
+
+%if 0
+	mov cx,[reg_cs]
+    cmp cx,[pspdbe]
+    jnz noregmodify
+    cmp word [reg_ip],100h
+    jnz noregmodify
+%endif    
 	mov	[reg_bx],dx
 	mov	[reg_cx],ax
+noregmodify:    
 
 ;	Rewind the file
 
@@ -3895,30 +3968,30 @@ ll10:	pop	bx
 ;	Begin loop over chunks to read
 
 ll11:	
-	mov	ah,3fh		;read from file into DS:DX
+	mov	ah,3fh		;read from file into DS:(E)DX
 	mov	cx,0fe00h	;read up to this many bytes
 	mov	ds,si
-	int	21h
+	int 21h
     
+	add	si,0fe0h	;wont work in protected-mode!
 	cmp	ax,cx
-	jne	ll12		;if end of file reached
-	add	si,0fe0h
-	jmp	ll11
+	je	ll11		;if end of file reached
 
 ;	Close the file and finish up.
 
-ll12:	mov	ah,3eh		;close file
+ll12:
+	mov	ah,3eh		;close file
 	int	21h
-	push	cs		;restore ds
+	push ss		;restore ds
 	pop	ds
 	ret			;done
 
 ll13:
-%endif
 
+;   file is .EXE or .COM
 ;	Close the file
 
-	push	ax
+	push ax
 	mov	ah,3eh		;close file
 	int	21h
 	pop	bx		;dx:bx is the file length
@@ -3935,24 +4008,22 @@ ll13:
 
 ;	Clear registers
 
-ll14:	mov	di,reg_bx
-	xor	ax,ax
-	mov	cx,7
-	rep	stosw
+ll14:
     push bx
     push dx
 ;	mov	[reg_bx],dx
 ;	mov	[reg_cx],bx
 
-;	Free up memory
+;--- cancel current process (unless there is none)
+;--- this will also put cpu back in real-mode!!!
 
-;--- return the previous process's memory
-;--- (this will also put cpu back in real-mode!!!)
-
+	call	isdebuggeeloaded
+    jz		notask
 	call	freemem	
+notask:
 
 	mov di, regs
-    mov cx, 16
+    mov cx, 16*2	;(8 std, 6 seg, ip, fl) * 2
     xor ax, ax
     rep stosw
     
@@ -3990,9 +4061,8 @@ ll15:	mov	[spadjust],ax
 	mov	[reg_ss],es
 	les	si,[execblk+18]
 	mov	[reg_ip],si
-ll1x:    
-	mov	byte [running],1	;set flag
 	mov	[reg_cs],es
+    mov byte [bInit],0
 	push cs
 	pop	es
     clc
@@ -4015,7 +4085,7 @@ ll1x:
 	mov	ds,[pspdbe]
 	mov	word [TPIVOFS],int22
 	mov	[TPIVSEG],cs
-	push	cs
+	push cs
 	pop	ds
 
 ;	Set up initial addresses for 'a', 'd', and 'u' commands.
@@ -4370,6 +4440,12 @@ oo_1:
     jb  oo_2
 	cmp ah,'D'
     jne oo_2
+%if 1    
+    mov ah,[si-2]		;distiguish 'od' and 'o d'
+    and ah,TOUPPER
+    cmp ah,'I'
+    jnz oo_2
+%endif    
     inc bx
     inc bx
     call skipwhite
@@ -4862,7 +4938,8 @@ pp16_2:
 
 qq:	
 
-; free the child process memory. Also return to real-mode if in pm
+; cancel child's process if any
+
 	call	freemem
 
 ;	Restore interrupt vectors.
@@ -4962,7 +5039,7 @@ rr1y:
 	lodsw
 	and	ax,TOUPPER_W
 	mov	di,regnames
-	mov	cx,15
+	mov	cx,16
 	repne	scasw
 	mov	bx,di
 	mov	di,line_out
@@ -4988,7 +5065,6 @@ rr1a:	call	getword
 	mov	[bx+regs],dx	;save new value
 	cmp	bx,reg_ip - regs
 	jne	rr1b		;if not changing IP
-	mov	byte [prg_trm],0	;clear flag
 rr1b:	ret
 
 ;	Change flags
@@ -5042,7 +5118,7 @@ rr6:
     lodsb
     and al,TOUPPER
     xchg al,ah
-    mov cx,15
+    mov cx,16
 	mov	di,regnames
 	repne	scasw
 	jne	no386_5
@@ -5078,7 +5154,6 @@ rr1aX:
 	mov	[bx+regshi],cx	;save new value
 	cmp	bx,reg_ip - regs
 	jne	rr1bX		;if not changing IP
-	mov	byte [prg_trm],0	;clear flag
 rr1bX:	ret
     
 no386_5    
@@ -5568,7 +5643,17 @@ ww6:	jmp	ww16
 
 ;	File extension is OK; write it.  First, create the file.
 
-ww7:	mov	bp,line_out
+ww7:
+%if PM
+	call ispm
+    jnz ww7_1
+    mov dx,nopmsupp
+    call int21ah9
+    ret
+ww7_1:    
+%endif
+
+	mov	bp,line_out
 	cmp	dh,0feh
 	jb	ww8		;if dx < fe00h
 	sub	dh,0feh		;dx -= 0xfe00
@@ -5619,8 +5704,8 @@ ww11:	mov	ax,0fe00h
 ww12:	
 	xchg ax,cx		;mov cx,ax
 	mov	ah,40h		;write to file
-	mov	ds,si       ;!!!! TODO, this might not work in protected-mode
-	call doscall	
+	mov	ds,si
+	int 21h			;use INT, not doscall
 	push ss			;restore DS
 	pop	ds
 	cmp	ax,cx
@@ -6008,11 +6093,9 @@ err2:	mov	dx,errcarat
 	call	int21ah9	;print string
 	jmp	[errret]
 
-;	FREEMEM - Free the child process's memory.
+;	FREEMEM - cancel child process
 
 freemem:
-	cmp	byte [running],0
-	jz	fmem1		;if process has already terminated
 	mov	[reg_cs],cs
 	mov	word [reg_ip],fmem2
 	mov	[reg_ss],ss
@@ -6020,19 +6103,7 @@ freemem:
 	mov	[reg_sp],sp	;save sp-2
 	pop	ax
 	call	run
-fmem1:    
-	xor	bx,bx
-	xchg bx,[newmem]	;ultimate size of DEBUG
-	or	bx,bx
-	jz	fmret		;if we've already shrunk ourselves
-    push cs
-    pop es
-	mov	ah,4ah
-	int	21h		;shrink DEBUG
-fmret:
-	mov	byte [prg_trm],0	;clear 'term' flag
 	ret
-
 fmem2:
 	mov	ax,4c00h	;quit
 	int	21h
@@ -6083,21 +6154,23 @@ run:
     cpu 386
     mov fs,[reg_fs]
     mov gs,[reg_gs]
-    mov cl,16
-    mov ax,[regh_eax]
-    shl eax,cl
-    mov bx,[regh_ebx]
-    shl ebx,cl
-    mov dx,[regh_edx]
-    shl edx,cl
-    mov bp,[regh_ebp]
-    shl ebp,cl
-    mov si,[regh_esi]
-    shl esi,cl
-    mov di,[regh_edi]
-    shl edi,cl
-    mov cx,[regh_ecx]
+    mov sp,regshi
+    pop ax
+    pop bx
+    pop cx		;save hiword(ecx) for later
+    pop dx
+    pop bp
+    pop bp
+    pop si
+    pop di
     shl ecx,16
+    mov cl,16
+    shl eax,cl
+    shl ebx,cl
+    shl edx,cl
+    shl ebp,cl
+    shl esi,cl
+    shl edi,cl
     cpu 8086
 no386:
 	mov	sp,regs
@@ -6150,21 +6223,9 @@ ifcleared32:
 int22:
 	cli
 	mov	word [cs:run_int],progtrm	;remember interrupt type
-	mov	byte [cs:running],0
-	mov	byte [cs:prg_trm],1
-%if 1
-	mov word [cs:reg_cs],cs
-;   mov word [cs:u_addr+0],0
-;   mov word [cs:u_addr+4],cs
-	mov word [cs:reg_ip],0
-	mov word [cs:reg_sp],100h
-	mov word [cs:reg_ss],cs
-    jmp nohesp
-%else
     mov sp,cs
     mov ss,sp
 	jmp	intrtn1		;jump to register saving routine (sort of)
-%endif    
 
 ;	Interrupt 0 (divide error) handler.
 
@@ -6218,27 +6279,27 @@ intrtn2:
 
 	cmp     [cs:machine],byte 3
     jb      no386_1
+	mov		word [ss:reg_fs],fs
+	mov		word [ss:reg_gs],gs
     cpu 386
-    mov		ax,ss
-    mov		ds,ax
-	mov		sp,[run_sp]
-	mov		word [reg_fs],fs
-	mov		word [reg_gs],gs
-    shr		ecx,16
-    mov 	[regh_ecx],cx
     mov		cl,16
     shr		eax,cl
-    mov		[regh_eax],ax
     shr		ebx,cl
-    mov		[regh_ebx],bx
     shr		edx,cl
-    mov		[regh_edx],dx
     shr		ebp,cl
-    mov		[regh_ebp],bp
     shr		esi,cl
-    mov		[regh_esi],si
     shr		edi,cl
-    mov		[regh_edi],di
+    shr		ecx,cl
+	mov		sp,regh_edi+2
+    push	di
+    push	si
+    push	bp
+    dec		sp
+    dec		sp
+    push	dx
+    push	cx
+    push	bx
+    push	ax
     cpu 8086
 no386_1:
 
@@ -6765,10 +6826,11 @@ parse_pt:
 	call	getword
 	call	chkeol		;expect end of line here
 	mov	cx,dx
-ppt1:	call	seteq		;make the = operand take effect
+ppt1:	
+	call	seteq		;make the = operand take effect
 	ret
 
-;	PARSEQL - Parse `=' operand for `g' and `t' commands.
+;	PARSEQL - Parse `=' operand for `g', 'p' and `t' commands.
 ;	Entry	AL	First character of command
 ;		SI	Address of next character
 ;	Exit	AL	First character beyond range
@@ -6777,37 +6839,45 @@ ppt1:	call	seteq		;make the = operand take effect
 ;		eqladdr	Address, if one was given
 ;	Uses	AH,BX,CX,DX.
 
-parseql:mov	byte [eqflag],0	;mark `=' as absent
+parseql:
+	mov	byte [eqflag],0	;mark `=' as absent
 	cmp	al,'='
 	jne	peq1		;if no `=' operand
 	call	skipwhite
 	mov	bx,[reg_cs]	;default segment
-	call	getaddr		;get the address into bx:dx
-	mov	[eqladdr],dx
+	call	getaddrX	;get the address into bx:(e)dx
+	mov	[eqladdr+0],dx
+%if PM
+    mov word [eqladdr+2],0
+	cmp byte [bAddr32],0
+    jz nohighofs
+    cpu 386
+    mov [eqladdr],edx
+    cpu 8086
+nohighofs:    
+%endif
 	mov	[eqladdr+4],bx
 	mov	byte [eqflag],1
-peq1:	ret
+peq1:	
+	ret
 
 ;	SETEQ - Copy the = arguments to their place, if appropriate.  (This
 ;	is not done immediately, because the 'g' command may have a syntax
 ;	error.)
 ;	Uses	AX.
 
-seteq:	cmp	byte [eqflag],0
-	jz	seq2		;if no `=' operand
-	mov	ax,[eqladdr]
+seteq:
+	cmp	byte [eqflag],0
+	jz	seq1		;if no `=' operand
+	mov	ax,[eqladdr+0]
 	mov	[reg_ip],ax
+	mov	ax,[eqladdr+2]
+	mov	[regh_eip],ax
 	mov	ax,[eqladdr+4]
 	mov	[reg_cs],ax
 	mov	byte [eqflag],0	;clear the flag
-	mov	byte [prg_trm],0;clear 'program terminated' flag, too
-seq1:	ret
-
-seq2:	cmp	byte [prg_trm],0
-	je	seq1		;if program was not already terminated
-	mov	dx,trmerr	;Program has terminated
-	call	int21ah9	;print string
-	jmp	cmd3		;quit command
+seq1:
+	ret
 
 ;--- get a valid offset for segment in BX
 
@@ -7059,7 +7129,7 @@ issymbol:
     push di
     push cx
     mov di,regnames
-    mov cx,15
+    mov cx,16
 	mov ah,[si]
     and ax,TOUPPER_W
     cmp byte [si+1],'A'
@@ -7118,7 +7188,7 @@ getdword:
     ret
 gd_0:    
 	call	getnyb
-	jc	errorj2		;if error
+	jc	errorj6		;if error
 	cbw
 	xchg	ax,dx
 	xor	bx,bx		;clear high order word
@@ -7126,14 +7196,16 @@ gd1:	lodsb
 	call	getnyb
 	jc	gd3
 	test	bh,0f0h
-	jnz	errorj2		;if too big
+	jnz	errorj6		;if too big
 	mov	cx,4
 gd2:	shl	dx,1		;double shift left
 	rcl	bx,1
 	loop	gd2
 	or	dl,al
 	jmp	gd1
-gd3:	ret
+gd3:	
+	ret
+errorj6: jmp error    
 
 ;	GETWORD - Get (hex) word from input line.
 ;		Entry	AL	first character
@@ -8968,6 +9040,79 @@ puts:
 	call doscall
 	ret
 
+createdummytask:
+
+	mov di, regs
+    mov cx, 16*2	;(8 std, 6 seg, ip, fl) * 2
+    xor ax, ax
+    rep stosw
+
+    mov ah,48h		;get largest free block
+    mov bx,-1
+    int 21h
+    mov ah,48h		;allocate it
+    int 21h
+    jc  ct_done
+
+    
+    push bx
+	mov	di,reg_ds	;fill segment registers ds,es,ss,cs
+	stosw
+	stosw
+	stosw
+	stosw
+    mov word [reg_ip],100h
+    pushf
+    pop word [reg_fl]
+	call adusetup
+	mov	bx,[reg_cs]	;bx:dx = where to load program
+	mov	es,bx
+    pop ax			;get size of memory block
+    mov dx,ax
+    add dx,bx
+	mov	[es:ALASAP],dx
+	cmp	ax,1000h
+	jbe	init14		;if memory left <= 64K
+	xor	ax,ax		;ax = 1000h (same thing, after shifting)
+init14:
+	mov	cl,4
+	shl	ax,cl
+	dec	ax
+	dec	ax
+	mov	[reg_sp],ax
+	xchg ax,di		;es:di = child stack pointer
+	xor	ax,ax
+	stosw			;push 0 on client's stack
+
+;	Create a PSP
+
+	mov	ah,55h		;create child PSP
+	mov	dx,es
+	mov	si,[es:ALASAP]
+	clc			;works around OS/2 bug
+	int	21h
+	mov	word [es:TPIVOFS],int22
+	mov	[es:TPIVSEG],cs
+    cmp byte [bInit],0
+    jnz nomemtouch
+    inc byte [bInit]
+    mov [es:100h],byte 0C3h	;place opcode for 'RET' at CS:IP
+nomemtouch:
+    mov [pspdbe],es
+    mov ax,es
+    dec ax
+    mov es,ax
+    inc ax
+    mov [es:0001],ax
+    push cs
+    pop es
+    mov bx,cs
+    call setpsp
+ct_done:    
+    ret
+
+
+
 ;	I/O buffers.  (End of permanently resident part.)
 
 end1:
@@ -8977,45 +9122,13 @@ line_out equ	end1+258	;length = 1 + 263
 real_end equ	end1+258+264
 staksiz	equ	200h
 
-				;lots of bytes follow this
-
-;---------------------------------------
-;	Initialization second phase.
-;
-;	Make this as small as possible, since we can't deallocate the memory.
-;	Upon entry:
-;		ax	0
-;		bx:dx	reg_es:100h
-;		es:di	child stack pointer
-;		interrupts off
-;
-;---------------------------------------
-
-intwo:	sti
-	push	ax		;0 on stack, just in case
-	stosw			;do the same for the child process
+initcont:    
+    int 21h			;free rest of DOS memory
 	mov	byte [line_out-1],'0'	;initialize line_out
-
-;	Create a PSP
-
-	mov	ah,55h		;create child PSP
-	mov	dx,es
-	mov	si,[ALASAP]	;memory size field
-	clc			;works around OS/2 bug
-	int	21h
-	mov	word [es:TPIVOFS],int22
-	mov	[es:TPIVSEG],cs
-    mov [es:100h],byte 0C3h
-    mov [running],byte 1
-    mov [pspdbe],es
-    push cs
-    pop es
-    mov bx,cs
-    call setpsp
-
-	call	ll3		;load the program
-    
+	call ll3		;load a program if one has been given at the command line
 	jmp	cmd3		;done
+
+				;lots of bytes follow this
 
 ;---------------------------------------
 ;	Debug initialization code.
@@ -9024,7 +9137,7 @@ intwo:	sti
 	align	2		;align on word boundary
 fp_status dw	5a5ah		;FPU status word
 
-imsg1	db	DBGNAME,' version 1.01.  Debugger.',CR,LF,CR,LF
+imsg1	db	DBGNAME,' version 1.02.  Debugger.',CR,LF,CR,LF
 	db	'Usage:	', DBGNAME, ' [[drive:][path]progname [arglist]]',CR,LF,CR,LF
 	db	'  progname	(executable) file to debug or examine',CR,LF
 	db	'  arglist	parameters given to program',CR,LF,CR,LF
@@ -9078,7 +9191,8 @@ init1:	mov	ah,30h	;check DOS version
 ;	Bits 12-15 of the FLAGS register are always set on the 8086 processor.
 ;	Probably the 186 as well.
 
-init2:	pushf			;get original flags into AX
+init2:	
+	pushf			;get original flags into AX
 	pop	ax
 	mov	cx,ax		;save them
 	and	ah,0fh		;clear bits 12-15
@@ -9163,7 +9277,8 @@ init2:	pushf			;get original flags into AX
 init3:	mov	[machine],al	;save it
 	jmp	init6		;don't restore SP
 
-init5:	push	ecx
+init5:
+	push	ecx
 	popfd			;restore AC bit in EFLAGS first
 	mov	sp,bx		;restore original stack pointer
 
@@ -9375,11 +9490,13 @@ nodpmihost:
 	movsw
 	mov	[si-2],cs
 
-;	Do some preparation for shrinking DEBUG and setting its stack
+    mov [pspdbe],cs	;indicate there is no debuggee loaded yet
 
+;	shrink DEBUG and set its stack
+    
 	mov	ax,real_end + staksiz + 15
 	and	ax,~15		;new stack pointer
-	push	ax
+    mov sp,ax
 	dec	ax
 	dec	ax
 	mov	[savesp],ax	;save new SP minus two (for the word we'll push)
@@ -9387,36 +9504,6 @@ nodpmihost:
 	inc	ax
 	mov	cl,4
 	shr	ax,cl
-	mov	[newmem],ax	;save DEBUG's new size
-	mov	bx,cs
-	add	ax,bx		;new segment
-	mov	di,reg_ds	;fill segment registers
-	stosw
-	stosw
-	stosw
-	stosw
-;	mov	[pspdbe],ax
-	call	adusetup
-	mov	bx,[reg_cs]	;bx:dx = where to load program
-	mov	dx,100h
-	mov	ax,[ALASAP]	;allocate stack for child
-	sub	ax,bx
-	cmp	ax,1000h
-	jbe	init14		;if memory left <= 64K
-	xor	ax,ax		;ax = 1000h (same thing, after shifting)
-init14:	mov	cl,4
-	shl	ax,cl
-	dec	ax
-	dec	ax
-	mov	[reg_sp],ax
-	xchg	ax,di		;es:di = child stack pointer
-	mov	es,bx
-
-;	Done with the first phase.
-
-	pop	ax
-	cli			;interrupts off -- new stack
-	mov	sp,ax
-	xor	ax,ax
-	jmp	intwo		;jump to second phase
-
+	mov bx,ax
+    mov ah,4Ah
+    jmp initcont

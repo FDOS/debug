@@ -1,4 +1,4 @@
-DEBUG version 1.01.
+DEBUG version 1.02.
 
 This is a clone of the MS-DOS DEBUG command. Some minor things aren't
 implemented (for details see file debug.doc). OTOH it has many features
