@@ -1,26 +1,31 @@
 
+This is a quick and dirty DEBUG tutorial.
+
 Public Domain 2004 Michael Webster
 
-This file contains a quick and dirty DEBUG tutorial.
+Note: MS-Debug means the original Debug written by Microsoft.
+      DEBUG/X  means the MS-Debug clone (both versions).
+      DEBUG    means both the original and the clone.
+      Enhancements for DEBUG/X are put in square brackets: [ENH: ].
 
-Enhancements for FD DEBUG are put in square brackets: [FDDEBUG: ].
-
-DEBUG was developed originally by Tim Paterson as a tool to aid in
+MS-Debug was developed originally by Tim Paterson as a tool to aid in
 his development of the 16-bit x86 OS that eventually became MS-DOS
 Version 1.0
 
-A version of DEBUG was included with every version of MS-DOS (and
+A version of MS-Debug was included with every version of MS-DOS (and
 PC-DOS, Compaq DOS, etc) and with every version of Windows through
-Windows XP. 
+Windows XP.
 
 DEBUG supports the 8086/8088 and 8087 registers and instruction sets.
 
-[FDDEBUG: this debugger supports the 80386 registers and instruction sets
-up to the Pentium Pro (the MMX instruction set is missing, however)]
+[ENH: DEBUG/X supports the 80386 registers and instruction sets
+up to the Pentium Pro, including Floating Point instructions. The MMX
+instruction set is missing, however. It is planned - and partially 
+implemented - for DEBUGX].
 
 DEBUG command line
 ------------------
-For the version of DEBUG that is included with Windows 98 SE, the
+For the version of MS-Debug that is included with Windows 98 SE, the
 command line "DEBUG /?" returns:
 
   Runs Debug, a program testing and editing tool.
@@ -35,7 +40,7 @@ command line "DEBUG /?" returns:
 
 DEBUG commands
 --------------
-This section deals with (most of) the commands that DEBUG recognizes
+This section deals with the commands that DEBUG recognizes
 while in command mode. Command mode, indicated by the presence of the
 DEBUG command prompt (a hyphen), is the mode that DEBUG starts in.
 
@@ -58,7 +63,7 @@ are set to the segment address of the area of memory that DEBUG uses
 to store the output from the Assemble command, the variable for IP
 is set to 100h, and the variable for SP is set to FFFEh.
 
-[FDDEBUG: this debugger supports the 32bit registers introduced with 
+[ENH: DEBUG/X supports the 32bit registers introduced with 
  the 80386. The high-words of these registers are initialized to zero
  on program start.]
 
@@ -81,6 +86,22 @@ offset address with a colon. Some examples using the Dump command:
 -D DS:100 102
 -D SS:20 L 4
 
+[ENH: DEBUGX understand this additional syntax:
+
+#D $F000:FFF6
+
+ which tells DEBUGX that F000 should be interpreted as a segment,
+ not as a selector when debuggee is in protected-mode.
+
+if debuggee is in protected-mode and the segment part of the starting
+address is a 32bit selector, the offset parts of the starting and ending
+address - as well as the length - can be 32bit. Examples:
+
+-D DS:110000 110FFF
+-D CS:400000 L 20000
+
+]
+
 ---
 
 The Assemble command (A) is used to enter assembly mode. In assembly
@@ -94,6 +115,18 @@ Syntax: A [address]
 
 ---
 
+The Compare command (C) compares two memory regions. All differences will be
+listed, both addresses are displayed, with their respective data bytes.
+Example:
+
+-C 0100 l 2 0200
+1234:0100  E9  65  1234:0200
+1234:0101  01  02  1234:0201
+
+Syntax: C range address
+
+---
+
 The Dump command (D), when used without a parameter, causes DEBUG
 to display the contents of the 128-byte block of memory starting at
 CS:IP if a target program is loaded, or starting at CS:100h if no
@@ -103,8 +136,84 @@ a starting address and a length. Subsequent Dump commands without a
 parameter cause DEBUG to display the contents of the 128-byte block
 of memory following the block displayed by the previous Dump command.
 
+[ENH: there is a autorepeat function implemented for D. If the last
+ command entered was Dump, pressing a single ENTER will count as a
+ subsequent Dump command.]
+
 Syntax: D [range]
 
+[ENH:
+---
+
+DEBUGX only: the Dump Interrupt (DI) command displays interrupt vectors in
+real/v86-mode and DPMI interrupt (+exception) vectors in protected-mode.
+Examples:
+
+Display interrupt 00 in real-mode:
+
+-DI 0
+int 00 02F8:03F8
+
+Display interrupt and exception vectors 08-0B in 32bit protected-mode:
+
+#DI 8 4
+int 08 00C7:00000D28 00C7:00001228
+int 09 00C7:00000D2D 00C7:0000122D
+int 0A 00C7:00000D32 00C7:00001232
+int 0B 00C7:00000D37 00C7:00001237
+
+Syntax: DI vector [count]
+
+---
+
+DEBUGX only: the Dump LDT descriptor (DL) command displays DPMI LDT
+descriptors. Example:
+
+#dl 84 2
+0084 base=00110800 limit=0000014F attr=00F2
+008C base=00110000 limit=000007FF attr=00F3
+
+DL can also be used to display limit and attributes of those GDT 
+descriptors which are accessible by the client. Example:
+
+#dl 18 3
+0018 base=???????? limit=FFFFFFFF attr=CFFB
+0020 base=???????? limit=FFFFFFFF attr=CFF3
+0028 base=???????? limit=???????? attr=????
+
+Syntax: DL selector [count]
+
+---
+
+The Dump MCBs (DM) displays the current DOS PSP and the DOS Memory 
+Control Block (MCB) chain.
+Example:
+
+PSP:1A27
+0219 4D 0008 04D6 SD
+06F0 4D 06F1 00BA COMMAND
+07AB 4D 0000 0007 
+07B3 4D 06F1 0047 COMMAND
+07FB 4D 0000 0039 
+...
+
+First value is the segment address of the MCB, followed by 4D/5A, the
+owner and size of the MCB and finally the 8-byte name of the owner.
+An owner of 0000 means that this MCB describes a free memory block.
+
+Syntax: DM
+
+---
+
+DEBUGX only: The Dump eXtended memory command (DX) allows to examine
+the full range of memory. It uses Interrupt 15h, AH=87h for extended
+memory access. It should be noted that, when running under a Expanded
+Memory Manager (EMM), Interrupt 15h, AH=87h behaves slightly inconsistent:
+addresses below 110000h are regarded as linear, while addresses >= 110000h
+are regarded as physical.
+
+Syntax: DX [address]
+]
 ---
 
 The Enter command (E) is used to enter data into memory. The required
@@ -118,7 +227,23 @@ terminates the command. If the list parameter is included, it can
 contain up to 8 byte values separated by spaces, commas, or tabs,
 and/or a case significant string enclosed in single or double quotes.
 
+Examples:
+
+-E 100 01 02 03
+-E 100 'ABC'
+-E 100 'ABC' 0
+
 Syntax: E address [list]
+
+---
+
+The Fill command (F) fills a memory regions with a byte pattern.
+To fill for example the first 8000h bytes of current data segment
+with pattern 55 AA, enter:
+
+-F 0 L 8000 55 AA
+
+Syntax: F range list
 
 ---
 
@@ -140,18 +265,29 @@ Syntax: G [=address] [break0 break1...]
 
 ---
 
+The Hex command (H) computes the sum and difference of two hex
+numbers.
+
+Syntax: H value1 value2
+
+[ENH: MS-Debug will handle WORD values only, DEBUG/X will accept
+ DWORD values.]
+
+---
+
 The Input command (I) causes DEBUG to read and display the value
 from the 8-bit I/O port specified by the required port parameter.
 
 Syntax: I port
 
-[FDDEBUG: besides I there exists IW/ID to read a WORD/DWORD from
-a 16-bit/32-bit port.]
+[ENH: besides I there exists IW/ID to read a WORD/DWORD from
+ a 16-bit/32-bit port. ID is available on machines with a 80386+ cpu
+ only.]
 
 ---
 
 The Load command (L) is used to load a file into memory. The file to
-load is specified with the Name command. The optional address
+load is specified with the Name command (N). The optional address
 parameter specifies the load address. The default load address is
 CS:100 for all files other than EXE files, for which information in
 the file header determines the load address. After DEBUG loads the
@@ -167,17 +303,44 @@ as 0=A, 1=B, 2=C etc.
 
 Syntax: L address drive startsector numberofsectors
 
+[ENH: L with logical sectors on Windows XP will work for DEBUGX only.]
+---
+
+The Move command (M) copies a memory region to another location. If
+source and destination overlap, parts of the source will be overwritten.
+
+Syntax: M range address
+
+[ENH:
+if M is entered without - or with one - argument, it is regarded as 'Mode'
+command, which displays - or sets - the current CPU mode.
+
+Syntax: M [mode]
+
+'mode' is 0 for a 8086/8088, 1 for a 80186, ... 6 for a 80686 (Pentium=80586,
+Pentium Pro=80686).
+
+---
+
+The MC command allows to set the FPU mode. This is for the A and D 
+commands only. To display the current FPU mode, use the M command.
+
+Syntax: MC [N|2]
+
+MC without argument will enable and MC N will disable the FPU. MC 2 will
+set the FPU to 80287 - this is accepted only if the current cpu is a 80386.
+]
 ---
 
 The Name command (N) is used to input a filename (actually, a file
 specification that can include a drive and a path) for a subsequent
-Load or Write command.
+Load or Write command. Because the Name command uses the simulated 
+PSP as a buffer, it can also be used to enter command line arguments
+and/or switches for the program being debugged.
 
-Syntax: N filespec
+Be aware that the N command alters the value of the AX register!
 
-Because the Name command uses the simulated PSP as a buffer, it can
-also be used to enter command line filenames and/or switches for
-the program being debugged.
+Syntax: N filespec [arguments]
 
 ---
 
@@ -185,14 +348,31 @@ The Output command (O) causes DEBUG to write the byte specified by
 the required byte parameter to the 8-bit I/O port specified by the
 required port parameter (O port byte)
 
-Syntax:O port byte
+Syntax: O port byte
 
-[FDDEBUG: besides O there exists OW/OD to write a WORD/DWORD to
-a 16-bit/32-bit port.]
+[ENH: besides O there exists OW/OD to write a WORD/DWORD to
+a 16-bit/32-bit port. OD is available on machines with a 80386+ cpu
+only.]
+
+---
+
+The Proceed command (P) functions like the Trace command (T) for all
+instructions other than the repeat (REP) string, LOOP, procedure
+CALL, and interrupt call (INT) instructions. For a repeat string
+instruction, DEBUG executes the instruction to completion. For a
+LOOP instruction, DEBUG executes the entire loop to completion.
+For a procedure CALL or an interrupt call instruction, DEBUG
+executes the entire call up to and including the return instruction.
+After execution is complete, DEBUG continues as it does for the
+Trace command.
+
+Syntax: P [=address] [number]
 
 ---
 
 The Quit command (Q) should be a no-brainer.
+
+Syntax: Q
 
 ---
 
@@ -216,12 +396,63 @@ flags as follows:
 
 Syntax: R [register]
 
+[ENH: if the register argument is given, it can be immediately
+followed by the new value . No prompt will appear then.
 
-[FDDEBUG: if the current cpu is a 80386 or better, this debugger 
- supports the RX command, which toggles between the 16bit register
- set (which is the default) and the 32bit register set to be displayed.
- Additionally, RN is implemented, which displays the status of the FPU
- registers.]
+Syntax: R [register] [value]
+
+The processor flags can be changed in two ways. The first syntax changes
+individual flags:
+
+-R F [OV|NV|DN|UP|EI|DI|NG|PL|ZR|NZ|AC|NA|PE|PO|CY|NC]
+
+the other syntax will set the [E]FL register:
+
+-R [E]FL <[d]word value>
+
+---
+
+DEBUGX only: The RM command displays MMX registers.
+The content is displayed from low to high bytes!
+
+Syntax: RM
+
+---
+
+The RN command display the content of the floating point registers. DEBUGX
+renders the content of these registers in "readable" floating point format,
+DEBUG displays the content in raw hex format (because the rendering code
+requires quite some space and DEBUG is intended to be kept small in size).
+
+Syntax: RN
+
+---
+
+The RX command is active if the current cpu is a 80386 or better. Then 
+RX will toggle between the simple 16bit register display (which is the 
+default) and the full 32bit register display.
+
+Syntax: RX
+
+---
+]
+
+Search (S) is  used  to find the occurrence of a specific byte or series
+of bytes within a segment. For example, to find all occurrences of 'CD 21'
+in memory region DS:100-1FF, enter:
+
+-S 100 l 100 CD 21
+ 1234:0122
+ 1234:01EC
+
+Or, to find all strings "hello" in DS:0100-FFFF, enter
+
+-S 100 FFFF 'hello'
+ 1234:0122
+ 1234:1221
+ 1234:EADC
+
+Syntax: S range list
 
 ---
 
@@ -241,25 +472,13 @@ valid instruction.
 
 Syntax: T [=address] [number]
 
-[FDDEBUG: if the current CS:IP points to an INT opcode, FDDEBUG's
-          behaviour depends on the current value of the TM option. 
-          If it is 0 (the default), the debugger will regain control
-          when the INT has been processed. If TM is 1, the debugger
-          will step "into" the INT.]
-
----
-
-The Proceed command (P) functions like the Trace command for all
-instructions other than the repeat (REP) string, LOOP, procedure
-CALL, and interrupt call (INT) instructions. For a repeat string
-instruction, DEBUG executes the instruction to completion. For a
-LOOP instruction, DEBUG executes the entire loop to completion.
-For a procedure CALL or an interrupt call instruction, DEBUG
-executes the entire call up to and including the return instruction.
-After execution is complete, DEBUG continues as it does for the
-Trace command.
-
-Syntax: P [=address] [number]
+[ENH: if the current CS:IP points to an INT opcode, DEBUG/X's
+ behaviour depends on the current value of the TM option. If it
+ is 0 (the default), the debugger will regain control when the
+ INT has been processed. If TM is 1, the debugger will step "into"
+ the INT.
+ Furthermore, autorepeat is active for T. That is, if the last
+ command was T, a single ENTER will count as a repeated T command.]
 
 ---
 
@@ -275,6 +494,9 @@ or a starting and ending address, or a starting address and a length.
 Subsequent Unassemble commands without any parameter cause DEBUG to
 start at the instruction following the last instruction processed by
 the previous Unassemble command.
+
+[ENH:  Autorepeat is active for U. That is, if the last command
+ was U, a single ENTER will count as a repeated U command.]
 
 Syntax: U [range]
 
@@ -297,6 +519,10 @@ the Load command.
 
 Syntax: W address drive startsector numberofsectors
 
+WARNING: You should know what you are doing when using this command.
+If used inappropriately, W can cause severe data losses.
+
+[ENH: W with logical sectors on Windows XP will work for DEBUGX only.]
 ---
 
 For the Trace, Proceed, and Register commands, after DEBUG completes
@@ -346,8 +572,8 @@ operands must be enclosed in square brackets.
 For a direct memory operand, the offset address of the data is
 specified in the operand. For an indirect memory operand, the offset
 address of the data is calculated at run-time using the contents of
-one or two registers and an optional displacement. The registers
-can be a base register (BX or BP) or an index register (SI or DI),
+one or two registers and an optional displacement. In 16bit code, the
+registers can be a base register (BX or BP) or an index register (SI or DI),
 or one of each. The following examples illustrate the differences
 between constant operands, register operands, direct memory operands,
 and indirect memory operands:
@@ -382,11 +608,21 @@ trailing "H").
 As previously noted, memory operands must be enclosed in square
 brackets.
 
-Segment override prefixes must be placed on the line preceding the
-prefixed instruction. For example:
+In MS-Debug, segment override prefixes must be placed on the line
+preceding the prefixed instruction. For example:
 
    ES:
-   MOV  AX,[100]
+   MOV AX,[100]
+   
+[ENH: DEBUG/X rejects this format. Here exist two alternative ways:
+
+   SEG ES
+   MOV AX,[100]
+
+or
+
+   MOV AX,ES:[100]
+]
 
 In addition to the items detailed above, DEBUG statements can include
 the following:
@@ -398,8 +634,8 @@ the following:
       SI DI
       CS ES DS SS
       
-   [FDDEBUG: if cpu is 80386 or better, the extended registers are
-    recognised as well: EAX, EBX, ECX, EDX, ESP, EBP, ESI, EDI. 
+   [ENH: if cpu is 80386 or better, the extended registers are
+    recognised as well: EAX, EBX, ECX, EDX, ESP, EBP, ESI, EDI.
     Furthermore, there are 2 new segment registers, FS and GS.]
 
    The words NEAR (or NE) and FAR, optionally followed by PTR,
@@ -414,24 +650,31 @@ the following:
    "JMP  [100]"), DEBUG will default to near. The optional PTR has
    no effect on the assembly process.
 
-   The words BYTE (or BY) and WORD (or WO), optionally followed by
-   PTR, which are used to specify the type for memory data. For
-   instructions that take two operands, DEBUG will assume that the
-   type for the data specified by a memory operand matches the type
-   for the other operand. For instructions that take one operand,
+   The words BYTE (or BY) and WORD (or WO) [ENH: and DWORD (or DW)],
+   optionally followed by PTR, which are used to specify the type for
+   memory data. For instructions that take two operands, DEBUG will
+   assume that the type for the data specified by a memory operand matches
+   the type for the other operand. For instructions that take one operand,
    the type must be specified. The optional PTR has no effect on
    the assembly process.
 
-   The DB and DW [FDDEBUG: and DD] pseudoinstructions, which are used
+   [ENH: for floating point opcodes, there exist 3 additional memory
+   types, FLOAT (or FL), DOUBLE (or DO) and TBYTE (or TB):
+       FLD  FLOAT [100]
+       FSTP DOUBLE [100]
+       FSTP TBYTE [100]
+   ]
+
+   The DB and DW [ENH: and DD] pseudoinstructions, which are used
    to assemble byte and word values. These pseudoinstructions are normally
-   used to set  aside space for and initialize data. They can also be used
-   to synthesize instructions that DEBUG cannot assemble.  Note that
+   used to set aside space for and initialize data. They can also be used
+   to synthesize instructions that DEBUG cannot assemble. Note that
    DEBUG will not allow a trailing comment on the same line as one of
    these pseudoinstructions.
 
    The word ORG, used to set (or change) the starting address for the
    assembly of instructions. Note that ORG may not be supported by
-   early versions of DEBUG.
+   early versions of MS-Debug.
 
    DEBUG checks for errors as it assembles each statement. If an error
    is detected, DEBUG stops assembling the statement and displays
@@ -549,312 +792,9 @@ N to the first sector of drive A. Note that this will
 N work only if the OS recognizes the diskette as
 N having a valid format.
 N BOOTCODE.BIN
-L 0
-W 0 0 0 1
+L 100
+W 100 0 0 1
 Q
 
 ---
 
-And this very long DEBUG script will generate an interrupt call
-routine for QBasic that is patterned after the InterruptX routine
-for QuickBASIC.
-
-N To prevent the QBasic error handler from intercepting and
-N handling critical errors that occur during calls to certain
-N DOS functions, this routine installs a temporary Critical-
-N Error handler before the interrupt call is made and restores
-N QBasic's Critical-Error handler after the call returns.
-N This allows the called function to return an error code
-N directly to the caller.
-N
-N The CPU register values are passed in variables of type
-N RegTypeX (the order of the elements is significant!):
-N
-N  TYPE RegTypeX
-N     ax    AS INTEGER
-N     bx    AS INTEGER
-N     cx    AS INTEGER
-N     dx    AS INTEGER
-N     bp    AS INTEGER
-N     si    AS INTEGER
-N     di    AS INTEGER
-N     flags AS INTEGER
-N     ds    AS INTEGER
-N     es    AS INTEGER
-N  END TYPE
-N  DIM inRegX AS RegTypeX, outRegX AS RegTypeX
-N
-N To call:
-N
-N CALL ABSOLUTE(intNum, inRegX, outRegX, VARPTR(qBasicIx(0)))
-N
-N The variable inRegX contains the register values before
-N the interrupt call. If inRegX.ds = -1 or inRegX.es = -1,
-N then the corresponding register will retain its current
-N value. The current value for DS will always be the
-N default data segment.
-N
-N Note that inRegX.flags can be used to set the value of
-N the 6 status flag bits ONLY - all other bits in the flags
-N register are preserved. The status flags are the Overflow
-N (bit 11), Sign (bit 7), Zero (bit 6), Auxiliary Carry
-N (bit 4), Parity (bit 2), and Carry (bit 0) flags.
-N
-N IMPORTANT:
-N  Because it contains hard coded absolute offset
-N  addresses, this procedure MUST be stored at
-N  offset 0 in its segment. With QBasic, this can
-N  be accomplished by loading this procedure into
-N  a numeric array starting at element 0.
-N
-N QBASICIX.BIN
-A 0
-      ; Procedure entry point.
-      ;
-      ; QB procedures must preserve the direction flag,
-      ; and the BP, SI, DI, DS, and SS registers.
-      ; Preserve BP.
-      push  bp
-      ; Move the stack pointer into BP. This will prepare
-      ; BP for use as a stack frame pointer.
-      mov   bp,sp
-      ;
-      ; *Reference Point*
-      ;
-      ; QB passes parameters by near reference. The value
-      ; passed is the offset address of the parameter in
-      ; the QB program's default data segment. QB pushes
-      ; parameters in left to right order. The contents of
-      ; the stack, relative to BP, are now:
-      ;     ...
-      ;     BP+0 = preserved BP
-      ;     BP+2 = return offset address
-      ;     BP+4 = return segment address
-      ;     BP+6 = offset address of outRegX
-      ;     BP+8 = offset address of inRegX
-      ;     BP+a = offset address of intNum
-      ;     ...
-      ; Preserve the flags register to protect against
-      ; the possibility of a buggy interrupt handler
-      ; inadvertently changing the direction flag.
-      pushf
-      ; Preserve the remaining must-preserve registers
-      ; (other than SS, which we can safely assume will
-      ; not be changed).
-      push  si
-      push  di
-      push  ds
-      ; Preserve our stack frame pointer so we can recover
-      ; it easily at reentry.
-      push  bp
-      ;
-      ; A QBasic program's default data segment shares the
-      ; same segment as the program's stack, and the two
-      ; together are referred to as DGROUP. When a procedure
-      ; called by QBasic receives control, DS and SS are are
-      ; set to DGROUP. Our local variables are in the code
-      ; segment. To access these variables without a segment
-      ; override, set DS to the code segment.
-      push  cs
-      pop   ds
-      ;
-      ; An "interrupt vector" is the far address of the
-      ; interrupt handler. A far address includes both
-      ; a segment address and an offset address.
-      ;
-      ; Save the interrupt vector for the current
-      ; Critical-Error handler to local variables.
-      ; The Critical-Error handler is called via
-      ; Interrupt 24h. The DOS Get Interrupt Vector
-      ; function returns the vector in ES:BX.
-      mov   ax,3524
-      int   21
-      mov   [0b2],bx       ; _original_int24_offset
-      mov   [0b4],es       ; _original_int24_segment
-      ;
-      ; Install the temporary Critical-Error handler.
-      ; The DOS Set Interrupt Vector function expects
-      ; the interrupt vector in DS:DX. The temporary
-      ; handler is in the code segment and DS is set
-      ; to the code segment.
-      mov   ax,2524
-      mov   dx,0af         ; _temp_handler
-      int   21
-      ;  
-      ; Get the intNum parameter and copy it to the byte
-      ; following the interrupt instruction.
-      ;
-      ; Move the offset of the intNum parameter into BX.
-      ; Most instructions that access data use DS by
-      ; default. Indirect memory operands that that
-      ; specify BP cause the instruction to use SS.
-      mov   bx,[bp+0a]     ; Source is SS:[BP+0a]
-      ; Move the value of the intNum parameter into AX.
-      ; The segment override is necessary because DS
-      ; is set to the code segment and the parameter
-      ; is in DGROUP.
-      ss:
-      mov   ax,[bx]        ; Source is SS:[BX]
-      ; Copy the interrupt number to the byte
-      ; following the interrupt instruction.
-      ; Note that the interrupt instruction is
-      ; a single byte (op code CDh).
-      mov   [6a],al        ; _int_offset plus one
-      ;
-      ; To access the parameters without a segment
-      ; override, we need to restore DS to DGROUP.
-      push  ss             ; SS always set to DGROUP
-      pop   ds
-      ;
-      ; Get the offset address of the inRegX parameter off
-      ; the stack and load the registers. For a variable of
-      ; a user defined type, QBasic stores the elements byte
-      ; packed and in the order in which they are defined.
-      ; We must temporarily preserve inRegX.ax, inRegX.bx,
-      ; and inRegX.dx on the stack because we need to use
-      ; the registers to retrieve the other elements.
-      mov   bx,[bp+8]      ; Offset of inRegX.ax
-      push  [bx]           ; Preserve inRegX.ax
-      push  [bx+2]         ; Preserve inRegX.bx
-      mov   cx,[bx+4]      ; Load CX
-      push  [bx+6]         ; Preserve inRegX.dx
-      mov   bp,[bx+8]      ; Load BP
-      mov   si,[bx+0a]     ; Load SI
-      mov   di,[bx+0c]     ; Load DI
-      ;
-      ; Get inRegX.es and inRegX.ds while DS is
-      ; set to DGROUP.
-      mov   ax,[bx+12]     ; Get inRegX.es
-      cmp   ax,-1
-      je    4b             ; _bypass_es
-      mov   es,ax          ; Load ES
-      ; _bypass_es
-      mov   ax,[bx+10]     ; Get inRegX.ds
-      cmp   ax,-1
-      je    55             ; _bypass_ds
-      mov   ds,ax          ; Load DS
-      ; _bypass_ds
-      ;
-      ; We need to avoid changing bits in the flags
-      ; register other than the 6 status flag bits.
-      ;
-      ; Get inRegX.flags into AX. The segment override is
-      ; necessary because DS may not be set to DGROUP.
-      ss:
-      mov   ax,[bx+0e]
-      ; Clear all bits other than the 6 status flag bits.
-      and   ax,8d5
-      ; Get the flags into DX.
-      pushf
-      pop   dx
-      ; Clear the 6 status flag bits.
-      and   dx,f72a
-      ; Combine the values.
-      or    ax,dx
-      ; Load the flags and the remaining registers.
-      push  ax
-      popf                 ; Load flags
-      pop   dx             ; Load DX
-      pop   bx             ; Load BX
-      pop   ax             ; Load AX
-      ;
-      ; Do the interrupt call. The interrupt return
-      ; instruction at end of the interrupt handler
-      ; chain will return to *Reentry Point*.
-      ;_int_offset
-      int   0
-      ;
-      ; *Reentry Point*
-      ;
-      ; At this point we know the state of the code segment,
-      ; stack segment, and stack pointer registers. The code
-      ; segment register is set to the segment address of
-      ; this procedure, the stack segment register is set to
-      ; DGROUP, and the stack pointer is pointing to the
-      ; preserved stack frame pointer.
-      ;
-      ; Preserve the returned registers that we need
-      ; to change.
-      push  ds
-      push  bp
-      push  bx
-      ;
-      ; Move the stack pointer into BP.
-      mov   bp,sp
-      ; The contents of the stack, relative to BP, are now:
-      ;     ...
-      ;     BP+0 = returned BX
-      ;     BP+2 = returned BP
-      ;     BP+4 = returned DS
-      ;     BP+6 = preserved stack frame pointer
-      ;     ...
-      ; Recover our original stack frame pointer.
-      mov   bp,[bp+6]
-      ; The contents of the stack, relative to BP, are now
-      ; the same as they were at *Reference Point*.
-      ;
-      ; Set DS to DGROUP.
-      push  ss             ; SS is always set to DGROUP
-      pop   ds
-      ; Move the offset of the outRegX parameter into BX.
-      mov   bx,[bp+6]
-      ; Load the returned registers into the elements
-      ; of outRegX.
-      mov   [bx],ax        ; Load outRegX.ax
-      pop   [bx+2]         ; Load outRegX.bx
-      mov   [bx+4],cx      ; Load outRegX.cx
-      mov   [bx+6],dx      ; Load outRegX.dx
-      pop   [bx+8]         ; Load outRegX.bp
-      mov   [bx+0a],si     ; Load outRegX.si
-      mov   [bx+0c],di     ; Load outRegX.di
-      ; The returned flags are still valid because none of
-      ; the instructions executed since *Reentry Point*
-      ; affect the flags.
-      pushf
-      pop   [bx+0e]        ; Load outRegX.flags
-      pop   [bx+10]        ; Load outRegX.ds
-      push  es
-      pop   [bx+12]        ; Load outRegX.es
-      ;
-      ; Restore the QBasic Critical-Error handler.
-      mov   ax,2524
-      cs:
-      mov   ds,[0b4]       ; _original_int24_segment
-      cs:
-      mov   dx,[0b2]       ; _original_int24_offset
-      int   21
-      ;
-      ; Remove the stack frame pointer from the stack.
-      pop   bp
-      ; Recover the preserved registers.
-      pop   ds
-      pop   di
-      pop   si
-      popf
-      pop   bp
-      ;
-      ; QBasic expects the called procedure to remove the
-      ; parameters from the stack. Return to the caller
-      ; and adjust the stack for 3 parameters.
-      retf  6
-      ;
-      ; Temporary Critical-Error handler. This handler
-      ; returns a value of 3 to the caller (normally DOS).
-      ; This value specifies that DOS should terminate the
-      ; function that caused the error and return an error
-      ; to the calling process.
-      ; _temp_handler
-      mov   al,3           ; Load AL with return value
-      iret                 ; Return to the caller
-      ;
-      ; Allocate space for our local variables using the
-      ; DW pseudoinstruction.
-      ; _original_int24_offset
-      dw    0
-      ; _original_int24_segment
-      dw    0
-
-RCX
-0B6
-W 0
-Q

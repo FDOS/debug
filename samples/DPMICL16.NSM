@@ -1,35 +1,22 @@
-
-;--- DPMICL16.ASM: 16bit DPMI application written in MASM syntax.
-;--- assemble: JWasm -bin -Fo dpmicl16.com dpmicl16.asm
+;   DPMICL16.NSM: NASM Sample for a 16-bit DPMI client.
+;   To assemble, use:
+;       nasm dpmicl16.nsm -O 2 -f bin -o dpmicl16.com
+;
 
 LF  equ 10
 CR  equ 13
 
-    .286
-    .model tiny
-
-    .data
-
-szWelcome db "welcome in protected-mode",CR,LF,0
-
-dErr1 db "no DPMI host installed",CR,LF,'$'
-dErr2 db "not enough DOS memory for initialisation",CR,LF,'$'
-dErr3 db "DPMI initialisation failed",CR,LF,'$'
-
-    .code
-
     org 100h
 
-;--- the 16bit initialization part
+    cpu 286
 
-start:
-    pop ax          ;get word saved on stack for COM files
+    pop ax          ;get word saved on stack
     mov bx, sp
     shr bx, 4
-    jnz @F
+    jnz stackok
     mov bx,1000h    ;it was a full 64kB stack
-@@:
-    mov ah, 4Ah     ;free unused memory
+stackok:
+    mov ah, 4Ah     ;release DOS memory
     int 21h
     mov ax, 1687h   ;DPMI host installed?
     int 2Fh
@@ -47,30 +34,28 @@ start:
 nomemneeded:
     mov bp, sp
     mov ax, 0000    ;start a 16-bit client
-    call far ptr [bp]   ;initial switch to protected-mode
+    call far [bp]   ;initial switch to protected-mode
     jc initfailed
 
 ;--- now in protected-mode
 
-    mov si, offset szWelcome
+    mov si, szWelcome
     call printstring
-    mov ax, 4C00h   ;normal client exit
+    mov ax, 4C00h   ;this exits protected-mode
     int 21h
 
 nohost:
-    mov dx, offset dErr1
+    mov dx, dErr1
     jmp error
 nomem:
-    mov dx, offset dErr2
+    mov dx, dErr2
     jmp error
 initfailed:
-    mov dx, offset dErr3
-error:
-    push cs
-    pop ds
-    mov ah, 9
+    mov dx, dErr3
+error:    
+    mov ah,9
     int 21h
-    mov ax, 4C00h
+    mov ax,4C00h
     int 21h
 
 ;--- print a string in protected-mode with simple
@@ -87,4 +72,8 @@ printstring:
 stringdone:
     ret
 
-    end start
+dErr1 db "no DPMI host installed",CR,LF,'$'
+dErr2 db "not enough DOS memory for client initialisation",CR,LF,'$'
+dErr3 db "DPMI initialisation failed",CR,LF,'$'
+szWelcome db "welcome in protected-mode",CR,LF,0
+

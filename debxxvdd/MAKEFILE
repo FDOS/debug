@@ -1,0 +1,29 @@
+
+# NMAKE makefile, creates DEBXXVDD.DLL
+# tools used:
+# - POASM or MASM v6
+# - POLINK or MS link
+
+NAME=DEBXXVDD
+DEBUG=0
+
+!if $(DEBUG)
+OUTDIR=DEBUG
+AOPTD=-Sg -D_DEBUG
+!else
+OUTDIR=RELEASE
+AOPTD=
+!endif
+
+ASM=ml -c -Fl$* -Fo$* -coff $(AOPTD) -IInclude
+#ASM=poasm -Fo$* -IInclude
+LINK=polink
+LOPTSD= /MAP /SUBSYSTEM:CONSOLE /DLL /LIBPATH:LIB /MERGE:.text=.rdata /BASE:0x73F00000
+LIBS=kernel32.lib ntvdm.lib
+
+$(OUTDIR)\$(NAME).DLL: $*.obj $(NAME).def Makefile
+    $(LINK) $*.OBJ /OUT:$*.DLL $(LOPTSD) $(LIBS) /DEF:$(NAME).def
+
+$(OUTDIR)\$(NAME).OBJ: $(NAME).asm Makefile
+    $(ASM) $(NAME).asm
+

@@ -1,34 +1,23 @@
-
-;--- DPMICL16.ASM: 16bit DPMI application written in MASM syntax.
-;--- assemble: JWasm -bin -Fo dpmicl16.com dpmicl16.asm
+;   DPMICL32.NSM: NASM Sample for a 32-bit DPMI client.
+;   To assemble, use:
+;       nasm dpmicl32.nsm -O 2 -f bin -o dpmicl32.com
+;
 
 LF  equ 10
 CR  equ 13
 
-    .286
-    .model tiny
+    cpu 386
 
-    .data
-
-szWelcome db "welcome in protected-mode",CR,LF,0
-
-dErr1 db "no DPMI host installed",CR,LF,'$'
-dErr2 db "not enough DOS memory for initialisation",CR,LF,'$'
-dErr3 db "DPMI initialisation failed",CR,LF,'$'
-
-    .code
+    use16
 
     org 100h
 
-;--- the 16bit initialization part
-
-start:
     pop ax          ;get word saved on stack for COM files
     mov bx, sp
     shr bx, 4
-    jnz @F
+    jnz stackok
     mov bx,1000h    ;it was a full 64kB stack
-@@:
+stackok:    
     mov ah, 4Ah     ;free unused memory
     int 21h
     mov ax, 1687h   ;DPMI host installed?
@@ -46,31 +35,27 @@ start:
     mov es, ax
 nomemneeded:
     mov bp, sp
-    mov ax, 0000    ;start a 16-bit client
-    call far ptr [bp]   ;initial switch to protected-mode
+    mov ax, 0001    ;start a 32-bit client
+    call far [bp]   ;initial switch to protected-mode
     jc initfailed
 
 ;--- now in protected-mode
 
-    mov si, offset szWelcome
+    mov bx,cs
+    mov cx,cs
+    lar cx,cx
+    shr cx,8
+    or  ch,40h      ;make a 32bit CS
+    mov ax,9
+    int 31h
+
+;--- now in 32-bit protected-mode
+
+    use32
+
+    mov esi, szWelcome
     call printstring
     mov ax, 4C00h   ;normal client exit
-    int 21h
-
-nohost:
-    mov dx, offset dErr1
-    jmp error
-nomem:
-    mov dx, offset dErr2
-    jmp error
-initfailed:
-    mov dx, offset dErr3
-error:
-    push cs
-    pop ds
-    mov ah, 9
-    int 21h
-    mov ax, 4C00h
     int 21h
 
 ;--- print a string in protected-mode with simple
@@ -87,4 +72,24 @@ printstring:
 stringdone:
     ret
 
-    end start
+    use16
+
+nohost:
+    mov dx, dErr1
+    jmp error
+nomem:
+    mov dx, dErr2
+    jmp error
+initfailed:
+    mov dx, dErr3
+error:
+    mov ah, 9
+    int 21h
+    mov ax, 4C00h
+    int 21h
+
+dErr1 db "no DPMI host installed",CR,LF,'$'
+dErr2 db "not enough DOS memory for client initialisation",CR,LF,'$'
+dErr3 db "DPMI initialisation failed",CR,LF,'$'
+szWelcome db "welcome in protected-mode",CR,LF,0
+

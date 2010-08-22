@@ -1,13 +1,14 @@
 Begin3
-Title:          debug
-Version:        1.06
-Entered-date:   2007-05-21
+Title:          DEBUG
+Version:        1.18
+Entered-date:   18 May 2009
 Description:    A program testing and editing tool
-Keywords:       freedos, debug, debugger
-Author:         vojta -at- math.berkeley.edu
-Maintained-by:  Japheth &lt;mail -at- japheth.de&gt;
-Primary-site: http://www.ibiblio.org/pub/micro/pc-stuff/freedos/files/dos/debug/
-Original-site:  http://math.berkeley.edu/~vojta
-Platforms:      DOS (assemble with NASM)
-Copying-policy: Free / open source (MIT-style)
+Keywords:       debug, debugger, DPMI debugger, 32bit debugger, kernel debugger
+Author:         Paul Vojta <vojta@math.berkeley.edu>
+Maintained-by:  Japheth <mail -at- japheth.de>
+Primary-site:   http://www.japheth.de/debxxf.html
+Alternate-site: http://www.ibiblio.org/pub/micro/pc-stuff/freedos/files/dos/debug/
+Original-site:  http://math.berkeley.edu/~vojta/
+Platforms:      DOS
+Copying-policy: free / source code available see debug.asm
 End

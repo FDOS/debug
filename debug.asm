@@ -1,11 +1,11 @@
-;	DEBUG.ASM	NASM/YASM assembler source for a clone of DEBUG.COM
-;           Version 1.06, 05/21/2007.
+;   DEBUG.ASM Masm/JWasm assembler source for a clone of DEBUG.COM
+;           Version 1.18, 05/18/2009.
 
-;	To assemble, use:
-;		nasm debug.asm -D PM=0 -O 2 -o debug.com
+;   To assemble, use:
+;       jwasm -DPM=0 -bin -Fo debug.com debug.asm
 ;
-;   To create the DPMI aware version of debug, use:
-;		nasm debug.asm -D PM=1 -O 2 -o debugx.com
+;   To create DEBUGX, the DPMI aware version of debug, use:
+;       jwasm -DPM=1 -bin -Fo debugx.com debug.asm
 
 ; ============================================================================
 ;
@@ -32,9966 +32,11278 @@
 ;
 ; Japheth: all extensions made by me are Public Domain. This does not
 ;          affect other copyrights.
-;
+;          This file is now best viewed with TAB size 4!
 ; ============================================================================
-;	Revision history:
-;	    0.95e [11 January 2003]  Fixed a bug in the assember.
-;	    0.95f [10 September 2003]  Converted to NASM; fixed some syntax
-;		incompatibilities.
-;	    0.98 [27 October 2003]  Added EMS commands and copyright conditions.
+;   Revision history:
+;       0.95e [11 January 2003]  Fixed a bug in the assember.
+;       0.95f [10 September 2003]  Converted to NASM; fixed some syntax
+;       incompatibilities.
+;       0.98 [27 October 2003]  Added EMS commands and copyright conditions.
 ;
-;       The following changes were done by Japheth:
-;	    0.99 [27 Septemb 2006]  bugfix: IF was not displayed correctly.
-;       FS and GS registers displayed if cpu is 80386+. 'rx' displays the 
-;       standard 32bit registers. R register [value] understands the
-;       standard 32bit registers.
-;	    0.99a [28 Septemb 2006] bugfix: JECXZ had wrong prefix (66h,
-;       should be 67h). Assembler/Disassembler understand LOOP(Z|NZ|E|NE)D.
-;	    0.99b [29 Septemb 2006] 'l' and 'w' now work with FAT32 drives.
-;	    0.99c [29 Septemb 2006] 'rx' now switches among 16/32 bit register
-;       dump. 'rn' displays floating point register status.
-;	    0.99d [02 October 2006] bugfix: 'rn' displayed error-pointer 
-;       registers wrong. 
-;	    0.99e [12 October 2006] 'xr' command added to reallocate EMS handle.
-;       'xa' command allows to allocate zero pages on EMS 4.0. 'tm 0|1' added
-;       to be able to switch 't' to the ms-dos debug compatible behaviour
-;       (that is, 't' jumps into 'INT xx').
-;	    0.99f [17 October 2006] debug's EMS functions may work even with a  
-;	    "hidden" EMM. bugfix: display of mappable pages didn't account for
-;       amount of these pages == 0.
-;	    0.99g [25 October 2006] bugfix: 'u' was unable to recognise [ESP]
-;       related memory operands (i.e. mov eax,[esp]).
-;	    0.99h [07 November 2006] bugfix: 'r' trying to display content of
-;       effective address has caused a GPF in v86-mode if this address
-;       was FFFFh of FFFDh. 'iw', 'id', 'ow' and 'od' implemented.
-;	    0.99i [14 November 2006] bugfix: a child PSP was created but not
-;       terminated, causing files not to be closed. It became obvious if
-;       stdin and/or stdout were redirected to files ("C:\>DEBUG >yyy")
-;	    0.99j [16 November 2006] bugfix: using 't' if current instruction is
-;       an INT xx (and trace mode == 0) stopped debuggee one instruction
-;       *after* the INT (due to a x86 design weakness). bugfix: the 0.99i
-;       bugfix had some problems on FreeDOS.
-;	    1.00 [25 November 2006] bugfix: debuggee's psp was saved after
-;	    program load only, but this has to be done every time the debugger
-;	    regains control. There is now a DPMI aware version of debug, DEBUGX,
-;       createable from the source. bugfix in disassembler: RETF did not 
-;       have a corresponding RETFD entry (to switch with prefix 66h)
-;	    1.01 [26 November 2006] bugfix: MC2 didn't work. Register names
-;       can be used anywhere where a number is expected as input.
-;	    1.02 [29 November 2006] bugfix: 'i d' and 'o d' didn't work because
-;       the parser assumed 'id' and 'od' commands.  bugfix: 't=' and 'g='
-;       didn't work in protected-mode. bugfix: loading a file at another
-;       location than cs:100h was not supported in versions 0.99 - 1.01.
-;       Debugger can be loaded high.
-;	    1.03 [1 February 2007] bugfix: DEBUG.COM did not reliably reset 
-;       "auto-reset" breakpoints (used for processing INTs). DEBUGX.COM was 
-;       not affected by this bug. 'di' now works in real-mode as well. 
-;       'dm' command added.
-;	    1.04 [2 March 2007] save/restore interrupt vectors 23h and 24h
-;       and set/get PSP is now done without using int 21h, making it 
-;       possible to single-step into int 21h.
-;	    if InDOS flag is set, avoid using int 21h for input and
-;       output. Allows to debug DOS itself.
-;	    1.05 [1 April 2007] 'dm' displays MCB "name". program exit
-;       code displayed. 'dx' added. Autorepeat for 'd', 'dx', 't' and 'u'.
-;	    1.06 [21 May 2007] bugfix: SMSW/LMSW didn't accept a 32bit operand.
-;	    bugfix: OW/OD didn't accept the value parameter. '-' supported in 'e'
-;       command.
-;	To do:
-;		*.HEX files
-;		MMX instructions
-;		Fix prefix 66h and "push byte S8"
-;		Fix disassembler issues (32 bit CS)
-;		Fix assembler issues (16-bit opcodes if current CS is 32 bit)
-;		Fix RN in protected mode (other structure of FCS and FOP)
-;		better display of floating point registers
-;		modify floating point registers
+;       The changes which were done by my, japheth, are described in
+;       README.TXT.
+;
+;   To do:
+;       - support loading *.HEX files
+;       - make C work with 32bit offsets in protected-mode
+;       - add MMX instructions for A and U
+;       - allow to modify floating point registers
+;       - better syntax checks for A (so i.e. "mov ax,al" is rejected)
 
-BS	equ	8
-TAB	equ	9
-LF	equ	10
-CR	equ	13
-TOLOWER	equ	20h
-TOUPPER	equ	0dfh
-TOUPPER_W equ	0dfdfh
-%if PM
-%define NOEXTENDER 1
-%define WIN9XSUPP  1
-%define DOSEMU     1
-%define EXCCSIP    1
-%define DISPHOOK   1
-%define DBGNAME "DEBUGX"
-%define DBGNAME2 "DebugX"
-%else
-%define NOEXTENDER 0
-%define DBGNAME "DEBUG"
-%define DBGNAME2 "Debug"
-%endif
+	option casemap:none
+;	option noljmp	;LJMP can sometimes cause a size increase
 
-;%define DOSNAME "FreeDOS"
-%define DOSNAME	"DOS"
-%define MCB 1
-%define USESDA 1
+BS         equ 8
+TAB        equ 9
+LF         equ 10
+CR         equ 13
+TOLOWER    equ 20h
+TOUPPER    equ 0dfh
+TOUPPER_W  equ 0dfdfh
+MNEMONOFS  equ 28	;offset in output line where mnemonics start (disassember)
 
-LINE_IN_LEN equ	257		;length of line_in (including header stuff)
+if PM
+VDD        equ 1	;try to load DEBXXVDD.DLL
+NOEXTENDER equ 1	;don't assume DPMI host includes a DOS extender
+WIN9XSUPP  equ 1	;avoid to hook DPMI entry when running in Win9x
+DOSEMU     equ 1	;avoid to hook DPMI entry when running in DosEmu
+EXCCSIP    equ 1	;display CS:IP where exception occured
+DISPHOOK   equ 1	;display "DPMI entry hooked..."
+DBGNAME    equ "DEBUGX"
+DBGNAME2   equ "DebugX"
+CATCHEXC06 equ 0	;catch exception 06h in protected-mode
+CATCHEXC0C equ 1	;catch exception 0Ch in protected-mode
+MMXSUPP    equ 1	;support MMX specific commands
+else
+VDD        equ 0
+NOEXTENDER equ 0
+DBGNAME    equ "DEBUG"
+DBGNAME2   equ "Debug"
+MMXSUPP    equ 0	;support MMX specific commands
+endif
 
-;	PSP offsets
+DOSNAME    equ <"DOS">
+MCB        equ 1	;support DM command
+USESDA     equ 1	;use SDA to get/set PSP in real-mode
+STACKSIZ   equ 200h
 
-ALASAP	equ	02h	;Address of Last segment allocated to program
-TPIVOFS	equ	0ah	;Terminate Program Interrupt Vector offset
-TPIVSEG	equ	0ch	;Terminate program Interrupt Vector segment
-CCIV	equ	0eh	;Control C Interrupt Vector
-CEIV	equ	12h	;Critical Error Interrupt Vector
-SPSAV	equ	2eh	;Save the stack pointer here
-DTA	equ	80h	;Program arguments; also used to store file name (N cmd)
+ifndef CATCHINT01
+CATCHINT01 equ 1	;catch INT 01 (single-step)
+endif
+ifndef CATCHINT03
+CATCHINT03 equ 1	;catch INT 03 (break)
+endif
 
-%if 0
-	[segment _TEXT]
-%else    
-	org	100h
-%endif    
+LINE_IN_LEN equ 257	;length of line_in (including header stuff)
 
-%if NASM
-%macro cpufpu 1
-	cpu %1
-%endmacro    
-%else
-%macro cpufpu 1
-	cpu %1 fpu
-%endmacro    
-%endif
+;--- PSP offsets
 
-	cpu 8086
+ALASAP	equ 02h	;Address of Last segment allocated to program
+TPIV	equ 0ah	;Terminate Program Interrupt Vector (int 22h)
+CCIV	equ 0eh	;Control C Interrupt Vector (int 23h)
+CEIV	equ 12h	;Critical Error Interrupt Vector (int 24h)
+PARENT	equ 16h	;segment of parent PSP
+SPSAV	equ 2eh	;Save the stack pointer here
+DTA		equ 80h	;Program arguments; also used to store file name (N cmd)
 
-	jmp	initcode
+;--- mne macro, used for the assembler mnemonics table
 
-cmdlist	dw	aa,error,cc,ddd,ee,ff,gg,hh,ii,error,error,ll,mm,nn,oo
-	dw	pp,qq,rr,sss,tt,uu,error,ww,xx
+mne macro val2:REQ, dbytes:VARARG
+ASMDATA segment
+CURROFS = $
+	ifnb <dbytes>
+	 db dbytes
+	endif
+ASMDATA ends
+	dw CURROFS - asmtab
+MN_&val2 equ $ - mnlist
+	tmpstr equ <>
+	tmpaux equ <>
+	forc chr$, <val2>
+	 tmpstr catstr tmpstr,tmpaux,<'>,<chr$>,<'>
+	 tmpaux equ <,>
+	endm
+	tmpstr catstr tmpstr,<+80h>
+	db tmpstr
+	endm
 
-savesp	dw	0		;save stack pointer
-errret	dw	0		;return here if error
-run_sp	dw	0		;stack pointer when running
-spadjust dw	40h 	;adjust sp by this amount for save
-pspdbe  dw	0		;debuggee's program segment prefix
-pspdbg  dw  0		;debugger's program segment prefix (always a segment)
-run2324	dw	0,0,0,0		;interrupt vectors 23 and 24 (when running)
-sav2324	dw	0,0,0,0		;interrupt vectors 23 and 24 (ours)
-hakstat	db	0		;whether we have hacked the vectors or not
-psp22	dw	0,0		;original terminate address in the PSP
-parent	dw	0		;original PSP of process parent (must be next)
-pInDOS	dd  0		;far16 address of InDOS flag
-%if PM
-InDosSegm dw 0		;saved segment value for InDOS flag ptr
-%endif
-%if USESDA
-pSDA	dd  0		;address of DOS swappable data area
-%if PM
-SDASegm	dw  0		;usually is the same as InDosSegm
-%endif
-%endif
-machine	db	0		;type of this processor
-regsdmp db  0		;bit 0: 1=386 register display
-tmode	db  0		;bit 0: 1=ms-dos compatible trace mode
-has_87	db	0		;if there is a math coprocessor present
-bInDbg  db  0		;1=debugger is running
-mach_87	db	0		;type of coprocessor present
-notatty	db	LF		;if standard input is from a file
-switchar db	0		;switch character
-swch1	db	' '		;switch character if it's a slash
-promptlen dw	0		;length of prompt
-bufnext	dw	line_in+2	;address of next available character
-bufend	dw	line_in+2	;address + 1 of last valid character
+AGRP macro num,rfld
+	exitm <240h + num*8 + rfld>
+	endm
 
-a_addr	dw	0,0,0	;address for next 'a' command
-d_addr	dw	0,0,0	;address of last `d' command; must follow a_addr
-u_addr	dw	0,0,0	;address of last `u' command; must follow d_addr
-%if PM
-x_addr	dd  0
-%endif
-eqflag	db	0		;flag indicating presence of `=' operand
-eqladdr	dw	0,0,0	;address of `=' operand in G or T command
-run_cs	dw	0		;save original CS when running
-run_int	dw	0		;interrupt type that stopped the running
-lastcmd dw  dmycmd
-bInit	db	0		;0=ensure a valid opcode is at debuggee's CS:IP
-fileext	db	0		;file extension (0 if no file name)
-EXT_OTHER equ	1
-EXT_COM	equ	2
-EXT_EXE	equ	4
-EXT_HEX	equ	8
+variant macro opcode:req, key:req, lockb, machine
+ASMDATA segment
+	ifnb <lockb>
+	 db lockb
+	endif
+	ifnb <machine>
+	 db machine
+	endif
+ainfo = (opcode) * ASMMOD + key
+	db HIGH ainfo, LOW ainfo
+ASMDATA ends
+	endm
 
-inttab
-	db	0
-	dw	intr0		;table of interrupt initialization stuff
-	db	1
-	dw	intr1
-	db	3
-	dw	intr3
-	db	22h
-	dw	debug22
+fpvariant macro opcode, key, addb, lockb, machine
+	variant opcode, key, lockb, machine
+ASMDATA segment
+	db addb
+ASMDATA ends
+	endm
 
-intsave	dd	0		;save area for interrupt vectors 0, 1, 3, 22h, 2Fh
-	dd	0
-	dd	0
-	dd	0
-%if PM    
+endvariant macro
+ASMDATA segment
+	db -1
+ASMDATA ends
+	endm
+
+;--- opl macro, used to define operand types
+
+opidx = 0
+opl macro value:VARARG
+	.radix 16t
+if opidx lt 10h
+_line textequ <OPLIST_0>,%opidx,< equ $ - oplists>
+else
+_line textequ <OPLIST_>,%opidx,< equ $ - oplists>
+endif
+_line
+	ifnb <value>
+	  db value
+	endif
+	db 0
+	opidx = opidx + 1
+	.radix 10t
+	endm
+
+OT macro num
+	exitm <OPLIST_&num+OPTYPES_BASE>
+	endm
+
+;--- sizeprf is to make DEBUG's support for 32bit code as small as possible.
+;--- for this to achieve a patch table is created in _IDATA which is filled
+;--- by memory offsets where prefix bytes 66h or 67h are found.
+
+sizeprf macro
+curreip = $
+_IDATA segment
+	dw curreip
+_IDATA ends
+	db 66h
+	endm
+
+if VDD
+;--- standard BOPs for communication with DEBXXVDD on NT platforms
+RegisterModule macro
+	db 0C4h, 0C4h, 58h, 0
+	endm
+UnRegisterModule macro
+	db 0C4h, 0C4h, 58h, 1
+	endm
+DispatchCall macro
+	db 0C4h, 0C4h, 58h, 2
+	endm
+endif
+
+	.8086
+
+ASMDATA segment word public 'CODE'
+	org 100h
+start:
+	jmp initcode
+asmtab label byte
+ASMDATA ends
+
+_TEXT segment dword public 'CODE'
+_TEXT ends
+
+_DATA segment word public 'DATA'
+_DATA ends
+
+_ITEXT segment word public 'CODE'
+_ITEXT ends
+
+_IDATA segment word public 'CODE'
+patches label word
+_IDATA ends
+
+DGROUP group ASMDATA, _TEXT, _DATA, _ITEXT, _IDATA
+
+_TEXT segment
+
+	assume ds:DGROUP
+
+cmdlist	dw aa,cmd_error,cc,ddd,ee,ff,gg,hh,ii,cmd_error,cmd_error,ll,mmm,nn,oo
+		dw pp,qq,rr,sss,tt,uu,cmd_error,ww,xx
+
+savesp	dw 0		;save stack pointer
+errret	dw 0		;return here if error
+run_sp	dw 0		;stack pointer when running
+spadjust dw 40h 	;adjust sp by this amount for save
+pspdbe	dw 0		;debuggee's program segment prefix
+pspdbg	dw 0		;debugger's program segment prefix (always a segment)
+run2324	dw 0,0,0,0	;debuggee's interrupt vectors 23 and 24 (both modes)
+if PM
+		dw 0,0
+dbg2324 dw i23pm, i24pm
+if VDD
+hVdd	dw -1		;handle of NT helper VDD
+endif
+endif
+sav2324	dw 0,0,0,0	;debugger's interrupt vectors 23 and 24 (real-mode only)
+hakstat	db 0		;whether we have hacked the vectors or not
+psp22	dw 0,0		;original terminate address in debugger's PSP
+parent	dw 0		;original parent PSP in debugger's PSP (must be next)
+if MCB
+wMCB	dw 0		;start of MCB chain (always segment)
+endif
+pInDOS	dd 0		;far16 address of InDOS flag (bimodal)
+if PM
+InDosSegm dw 0		;saved segment value of pInDOS
+endif
+if USESDA
+pSDA	dd 0		;far16 address of DOS swappable data area (bimodal)
+if PM
+SDASegm	dw 0		;saved segment value of pSDA
+endif
+endif
+machine	db 0		;cpu (0=8086,1,2,3=80386,...)
+rmode	db 0		;flags for R command
+RM_386REGS	equ 1	;bit 0: 1=386 register display
+tmode	db 0		;bit 0: 1=ms-debug compatible trace mode
+has_87	db 0		;if there is a math coprocessor present
+if MMXSUPP
+has_mmx	db 0
+endif
+bInDbg	db 1		;1=debugger is running
+mach_87	db 0		;coprocessor (0=8087,1,2,3=80387,...)
+notatty	db LF		;if standard input is from a file
+switchar db 0		;switch character
+swch1	db ' '		;switch character if it's a slash
+promptlen dw 0		;length of prompt
+bufnext	dw line_in+2	;address of next available character
+bufend	dw line_in+2	;address + 1 of last valid character
+
+a_addr	dw 0,0,0	;address for next A command
+d_addr	dw 0,0,0	;address for last D command; must follow a_addr
+u_addr	dw 0,0,0	;address for last U command; must follow d_addr
+
+if PM
+x_addr	dd 0		;(phys) address for last DX command
+endif
+eqflag	db 0		;flag indicating presence of `=' argument
+eqladdr	dw 0,0,0	;optional `=' argument in G, P and T command
+run_cs	dw 0		;save original CS when running in G
+run_int	dw 0		;interrupt type that stopped the running
+lastcmd	dw dmycmd
+bInit	db 0		;0=ensure a valid opcode is at debuggee's CS:IP
+fileext	db 0		;file extension (0 if no file name)
+
+EXT_OTHER	equ 1
+EXT_COM		equ 2
+EXT_EXE		equ 4
+EXT_HEX		equ 8
+
+;--- usepacket:
+;--- 0: packet is not used (int 25h/26h, cx!=FFFF)
+;--- 1: packet is used (int 25h/26h, cx==FFFF)
+;--- 2: packet is used (int 21h, ax=7305h, cx==FFFF)
+
+usepacket db 0
+
+PACKET struc
+secno	dd ?	;sector number
+numsecs	dw ?	;number of sectors to read
+dstofs	dw ?	;ofs transfer address
+dstseg	dw ?	;seg transfer address
+PACKET ends
+
+if PM
+PACKET32 struc
+secno	dd ?
+numsecs	dw ?
+dstofs	dd ?
+dstseg	dw ?
+PACKET32 ends
+endif
+
+if PM
+packet PACKET32 <0,0,0,0>
+else
+packet PACKET <0,0,0,0>
+endif
+
+inttab:
+	db 0
+	dw intr0		;table of interrupt initialization stuff
+if CATCHINT01
+	db 1
+	dw intr1
+endif
+if CATCHINT03
+	db 3
+	dw intr3
+endif
+	db 22h
+	dw debug22
+NUMINTS = ( $ - inttab ) / 3
+if PM
+	db 2Fh
+NUMINTSX = NUMINTS+1
+else
+NUMINTSX = NUMINTS
+endif
+
+intsave label dword
+		dd 0	;saved vector i00
+if CATCHINT01
+		dd 0	;saved vector i01
+endif
+if CATCHINT03
+		dd 0	;saved vector i03
+endif
+		dd 0	;saved vector i22
+if PM
 oldi2f	dd 0
-%endif
+endif
 
-;	Parameter block for exec call.
+;--- Parameter block for exec call.
 
-execblk	dw	0		;(0) copy the parent's environment
-	dw	0,0		;(2) address of command tail to copy
-	dw	5ch,0		;(6) address of first FCB to copy
-	dw	6ch,0		;(10) address of second FCB to copy
-	dw	0,0		;(14) initial SS:SP
-	dw	0,0		;(18) initial CS:IP
+EXECS struc
+environ dw ?	; +0 environment segment
+cmdtail dd ?	; +2 address of command tail to copy
+fcb1    dd ?	;+6 address of first FCB to copy
+fcb2    dd ?	;+10 address of second FCB to copy
+sssp    dd ?	;+14 initial SS:SP
+csip    dd ?	;+18 initial CS:IP
+EXECS ends
 
-;	Register save area (32 words).
+execblk	EXECS {0,0,5ch,6ch,0,0}
 
-regs:
-reg_ax	dw	0		;ax
-reg_bx	dw	0		;bx
-reg_cx	dw	0		;cx
-reg_dx	dw	0		;dx
-reg_sp	dw	0		;sp
-reg_bp	dw	0		;bp
-reg_si	dw	0		;si
-reg_di	dw	0		;di
-reg_ds	dw	0		;ds
-reg_es	dw	0		;es
-reg_ss	dw	0		;ss
-reg_cs	dw	0		;cs
-reg_fs	dw	0		;fs
-reg_gs	dw	0		;gs
+REGS struct
+rDI		dw ?,?	;+00 edi
+rSI		dw ?,?	;+04 esi
+rBP		dw ?,?	;+08 ebp
+		dw ?,?	;+12 reserved
+rBX		dw ?,?	;+16 ebx
+rDX		dw ?,?	;+20 edx
+rCX		dw ?,?	;+24 ecx
+rAX		dw ?,?	;+28 eax
 
-reg_ip	dw	0		;ip
-reg_fl	dw	0		;fl(ags)
+rDS		dw ?	;+32 ds
+rES		dw ?	;+34 es
+rSS		dw ?	;+36 ss
+rCS		dw ?	;+38 cs
+rFS		dw ?	;+40 fs
+rGS		dw ?	;+42 gs
 
-regshi:
-regh_eax dw 0
-regh_ebx dw 0
-regh_ecx dw 0
-regh_edx dw 0
-regh_esp dw 0
-regh_ebp dw 0
-regh_esi dw 0
-regh_edi dw 0
-         dw 0,0,0,0,0,0	;hiwords of segment registers (not used)
-regh_eip dw 0
-regh_efl dw 0
+rSP		dw ?,?	;+44 esp
+rIP		dw ?,?	;+48 eip
+rFL		dw ?,?	;+52 eflags
+if PM
+msw		dw ?	;0000=real-mode, FFFF=protected-mode
+endif
+REGS ends
 
-regnames dw	'AX','BX','CX','DX','SP','BP','SI','DI','DS','ES'
-	dw	'SS','CS','FS','GS','IP','FL'
+;--- Register save area.
 
-;	Instruction set information needed for the 'p' command.
+	align 4		;--- must be DWORD aligned!
 
-ppbytes	db	66h,67h,26h,2eh,36h,3eh,64h,65h,0f2h,0f3h	;prefixes
-	db	0ach,0adh,0aah,0abh,0a4h,0a5h	;lods,stos,movs
-	db	0a6h,0a7h,0aeh,0afh		;cmps,scas
-	db	6ch,6dh,6eh,6fh			;ins,outs
-	db	0cch,0cdh			;int instructions
-	db	0e0h,0e1h,0e2h		;loop instructions
-	db	0e8h			;call rel16/32
-	db	09ah			;call far seg16:16/32
-;	(This last one is done explicitly by the code.)
-;	db	0ffh			;ff/2 or ff/3:  indirect call
+regs REGS <>
 
-;	Info for the above, respectively.
-;	80h = prefix; 82h = operand size prefix; 81h = address size prefix.
-;	If the high bit is not set, the next highest bit (40h) indicates that
-;	the instruction size depends on whether there is an address size prefix,
-;	and the remaining bits tell the number of additional bytes in the
-;	instruction.
+;--- register names for 'r'. One item is 2 bytes.
+;--- regofs must folluw regnames and order of items must match 
+;--- those in regnames.
 
-ppinfo	db	82h,81h,80h,80h,80h,80h,80h,80h,80h,80h
-	db	0,0,0,0,0,0
-	db	0,0,0,0
-	db	0,0,0,0
-	db	0,1
-	db	1,1,1
-	db	42h
-	db	44h
+regnames db 'AX','BX','CX','DX',
+		'SP','BP','SI','DI','IP','FL',
+		'DS','ES','SS','CS','FS','GS'
+NUMREGNAMES equ ($ - regnames) / 2
+regofs	dw regs.rAX, regs.rBX, regs.rCX, regs.rDX, 
+		regs.rSP, regs.rBP, regs.rSI, regs.rDI, regs.rIP, regs.rFL,
+		regs.rDS, regs.rES, regs.rSS, regs.rCS, regs.rFS, regs.rGS
 
-PPLEN	equ	31		;size of the above table
+;--- arrays flgbits, flgnams and flgnons must be consecutive
+flgbits dw 800h,400h,200h,80h,40h,10h,4,1
+flgnams db 'NV','UP','DI','PL','NZ','NA','PO','NC'
+flgnons db 'OV','DN','EI','NG','ZR','AC','PE','CY'
 
-;	Strings.
+;--- Instruction set information needed for the 'p' command.
+;--- arrays ppbytes and ppinfo must be consecutive!
 
-prompt1	db	'-'		;main prompt
-prompt2	db	':'		;prompt for register value
-%if PM
-prompt3	db	'#'		;protected-mode prompt
-%endif
+ppbytes	db 66h,67h,26h,2eh,36h,3eh,64h,65h,0f2h,0f3h	;prefixes
+		db 0ach,0adh,0aah,0abh,0a4h,0a5h	;lods,stos,movs
+		db 0a6h,0a7h,0aeh,0afh		;cmps,scas
+		db 6ch,6dh,6eh,6fh			;ins,outs
+		db 0cch,0cdh				;int instructions
+		db 0e0h,0e1h,0e2h			;loop instructions
+		db 0e8h						;call rel16/32
+		db 09ah						;call far seg16:16/32
+;		(This last one is done explicitly by the code.)
+;		db 0ffh						;ff/2 or ff/3:  indirect call
 
-helpmsg	db	DOSNAME, ' ', DBGNAME2, ' v1.06 help screen',CR,LF
-	db	'assemble',9,	'A [address]',CR,LF
-	db	'compare',9,9,	'C range address',CR,LF
-	db	'dump',9,9,		'D [range]',CR,LF
-%if PM    
-	db	'dump IDT/IVT',9,'DI interrupt',CR,LF
-	db	'dump LDT',9,	'DL selector',CR,LF
-%endif    
-%if MCB
-	db	'dump MCB chain',9,'DM',CR,LF
-%endif
-%if PM    
-	db	'dump ext memory',9,'DX linear_address',CR,LF
-%endif
-	db	'enter',9,9,	'E address [list]',CR,LF
-	db	'fill',9,9,		'F range list',CR,LF
-	db	'go',9,9,		'G [=address] [breakpts]',CR,LF
-	db	'hex add/sub',9,'H value1 value2',CR,LF
-	db	'input',9,9,	'I[W|D] port',CR,LF
-	db	'load program',9,'L [address]',CR,LF
-	db	'load sectors',9,'L address drive sector count',CR,LF
-	db	'move',9,9,		'M range address',CR,LF
-	db	'80x86 mode',9,	'M [x (0..6, ? for query)]',CR,LF
-	db	'set FPU mode',9,'MC 387, MNC none, MC2 287',CR,LF
-	db	'set name',9,	'N [[drive:][path]progname [arglist]]',CR,LF
-	db	'output',9,9,	'O[W|D] port value',CR,LF
-	db	'proceed',9,9,	'P [=address] [count]',CR,LF
-	db	'quit',9,9,		'Q',CR,LF
-	db	'register',9,	'R [register [value]]',CR,LF
-%if PM
-    db  '$'
-helpmsg2:    
-%endif
-    db  'FPU register',9,'RN',CR,LF
-    db  'toggle 386 regs',9,'RX',CR,LF
-	db	'search',9,9,	'S range list',CR,LF
-%if PM==0
-    db  '$'
-helpmsg2:    
-%endif
-	db	'trace',9,9,	'T [=address] [count]',CR,LF
-	db	'trace mode',9,	'TM [0|1]',CR,LF
-	db	'unassemble',9,	'U [range]',CR,LF
-	db	'write program',9,'W [address]',CR,LF
-	db	'write sectors',9,'W address drive sector count',CR,LF
-	db	'expanded mem',9,'XA/XD/XM/XR/XS,X? for help'
-%if PM    
-    db   CR,LF,CR,LF
-	db  "prompts: '-' = real/v86-mode; '#' = protected-mode"
-%endif    
-crlf	db	CR,LF,'$'
+;   Info for the above, respectively.
+;   80h = prefix;
+;   81h = address size prefix.
+;   82h = operand size prefix;
+;   If the high bit is not set, the next highest bit (40h) indicates that
+;   the instruction size depends on whether there is an address size prefix,
+;   and the remaining bits tell the number of additional bytes in the
+;   instruction.
+
+PP_ADRSIZ	equ 01h
+PP_OPSIZ	equ 02h
+PP_PREFIX	equ 80h
+PP_VARSIZ	equ 40h
+
+ppinfo	db 82h,81h,80h,80h,80h,80h,80h,80h,80h,80h	;prefixes
+	db 0,0,0,0,0,0									;string instr
+	db 0,0,0,0										;string instr
+	db 0,0,0,0										;string instr
+	db 0,1											;INT instr
+	db 1,1,1										;LOOPx instr
+	db 42h											;near CALL instr
+	db 44h											;far CALL instr
+
+PPLEN	equ $ - ppinfo
+
+;--- Strings.
+
+prompt1	db '-'		;main prompt
+prompt2	db ':'		;prompt for register value
+if PM
+prompt3	db '#'		;protected-mode prompt
+endif
+
+helpmsg	db DOSNAME, ' ', DBGNAME2, ' v1.18 help screen',CR,LF
+	db 'assemble',9,	'A [address]',CR,LF
+	db 'compare',9,9,	'C range address',CR,LF
+	db 'dump',9,9,		'D [range]',CR,LF
+if PM
+	db 'dump interrupt',9,'DI interrupt [count]',CR,LF
+	db 'dump LDT',9,	'DL selector [count]',CR,LF
+endif
+if MCB
+	db 'dump MCB chain',9,'DM',CR,LF
+endif
+if PM
+	db 'dump ext memory',9,'DX [physical_address]',CR,LF
+endif
+	db 'enter',9,9,	'E address [list]',CR,LF
+	db 'fill',9,9,		'F range list',CR,LF
+	db 'go',9,9,		'G [=address] [breakpts]',CR,LF
+	db 'hex add/sub',9,'H value1 value2',CR,LF
+	db 'input',9,9,	'I[W|D] port',CR,LF
+	db 'load program',9,'L [address]',CR,LF
+	db 'load sectors',9,'L address drive sector count',CR,LF
+	db 'move',9,9,		'M range address',CR,LF
+	db '80x86 mode',9,	'M [x] (x=0..6)',CR,LF
+	db 'set FPU mode',9,'MC [2|N] (2=287,N=no FPU)',CR,LF
+	db 'set name',9,	'N [[drive:][path]progname [arglist]]',CR,LF
+	db 'output',9,9,	'O[W|D] port value',CR,LF
+	db 'proceed',9,9,	'P [=address] [count]',CR,LF
+	db 'quit',9,9,		'Q',CR,LF
+	db 'register',9,	'R [register [value]]',CR,LF
+if PM
+	db '$'
+helpmsg2 label byte
+endif
+if MMXSUPP
+	db 'MMX register',9,'RM',CR,LF
+endif
+	db 'FPU register',9,'RN',CR,LF
+	db 'toggle 386 regs',9,'RX',CR,LF
+	db 'search',9,9,	'S range list',CR,LF
+if PM eq 0
+	db '$'
+helpmsg2 label byte
+endif
+	db 'trace',9,9,	'T [=address] [count]',CR,LF
+	db 'trace mode',9,	'TM [0|1]',CR,LF
+	db 'unassemble',9,	'U [range]',CR,LF
+	db 'write program',9,'W [address]',CR,LF
+	db 'write sectors',9,'W address drive sector count',CR,LF
+	db 'expanded mem',9,'XA/XD/XM/XR/XS,X? for help'
+if PM
+	db CR,LF,LF
+	db "prompts: '-' = real/v86-mode; '#' = protected-mode"
+endif
+crlf	db CR,LF,'$'
 
 presskey db '[more]$'
 
-xhelpmsg db	'Expanded memory (EMS) commands:',CR,LF
-	db	'  Allocate	XA count',CR,LF
-	db	'  Deallocate	XD handle',CR,LF
-	db	'  Map memory	XM logical-page physical-page handle',CR,LF
-	db	'  Reallocate	XR handle count',CR,LF
-	db	'  Show status	XS',CR,LF,'$'
+errcarat db '^ Error',CR,LF,'$'
 
-errcarat db	'^ Error',CR,LF,'$'
+dskerr0	db 'Write protect error',0
+dskerr1	db 'Unknown unit error',0
+dskerr2	db 'Drive not ready',0
+dskerr3	db 'Unknown command',0
+dskerr4	db 'Data error (CRC)',0
+dskerr6	db 'Seek error',0
+dskerr7	db 'Unknown media type',0
+dskerr8	db 'Sector not found',0
+dskerr9	db 'Unknown error',0
+dskerra	db 'Write fault',0
+dskerrb	db 'Read fault',0
+dskerrc	db 'General failure',0
 
-dskerrs dw	dskerr0,dskerr1,dskerr2,dskerr3,dskerr4,dskerr9,dskerr6,dskerr7
-	dw	dskerr8,dskerr9,dskerra,dskerrb,dskerrc
-dskerr0	db	'Write protect error',0
-dskerr1	db	'Unknown unit error',0
-dskerr2	db	'Drive not ready',0
-dskerr3	db	'Unknown command',0
-dskerr4	db	'Data error (CRC)',0
-dskerr6	db	'Seek error',0
-dskerr7	db	'Unknown media type',0
-dskerr8	db	'Sector not found',0
-dskerr9	db	'Unknown error',0
-dskerra	db	'Write fault',0
-dskerrb	db	'Read fault',0
-dskerrc	db	'General failure',0
-reading	db	' read',0
-writing	db	' writ',0
-drive	db	'ing drive '
-driveno	db	'_',0
-msg8088	db	'8086/88',0
-msgx86	db	'x86',0
-no_copr	db	' without coprocessor',0
-has_copr db	' with coprocessor',0
-has_287	db	' with 287',0
-regs386 db  '386 regs o'
+dskerrs db dskerr0-dskerr0,dskerr1-dskerr0
+		db dskerr2-dskerr0,dskerr3-dskerr0
+		db dskerr4-dskerr0,dskerr9-dskerr0
+		db dskerr6-dskerr0,dskerr7-dskerr0
+		db dskerr8-dskerr0,dskerr9-dskerr0
+		db dskerra-dskerr0,dskerrb-dskerr0
+		db dskerrc-dskerr0
+
+reading	db ' read',0
+writing	db ' writ',0
+drive	db 'ing drive '
+driveno	db '_',0
+msg8088	db '8086/88',0
+msgx86	db 'x86',0
+no_copr	db ' without coprocessor',0
+has_copr db ' with coprocessor',0
+has_287	db ' with 287',0
+regs386	db '386 regs o'
 regs386s db '  ',0
-tmodes  db  'trace mode is '
-tmodev  db  '  - INTs are ',0
-tmode1  db  'traced',0
-tmode0  db  'processed',0
-unused	db	' (unused)',0
-needsmsg db	'[needs x86]'
-needsmsg_L equ	11
-needsmath db	'[needs math coprocessor]'
-needsmath_L equ	24
-obsolete db	'[obsolete]'
-obsolete_L equ	10
-int0msg	db	'Divide error',CR,LF,'$'
-int1msg	db	'Unexpected single-step interrupt',CR,LF,'$'
-int3msg	db	'Unexpected breakpoint interrupt',CR,LF,'$'
+tmodes	db 'trace mode is '
+tmodev	db '  - INTs are ',0
+tmode1	db 'traced',0
+tmode0	db 'processed',0
+unused	db ' (unused)',0
 
-%if PM
-%if 0
-exc6msg	db	'Invalid opcode fault',CR,LF,'$'
-%endif
-%if 1
-excCmsg	db	'Stack fault',CR,LF,'$'
-%endif
-excDmsg	db	'General protection fault',CR,LF,'$'
-%if EXCCSIP
-excloc	db	'CS:IP='
+needsmsg db '[needs x86]'
+needsmsg_L equ $ - needsmsg
+needsmath db '[needs math coprocessor]'
+needsmath_L equ $ - needsmath
+obsolete db '[obsolete]'
+obsolete_L equ $ - obsolete
+
+int0msg	db 'Divide error',CR,LF,'$'
+int1msg	db 'Unexpected single-step interrupt',CR,LF,'$'
+int3msg	db 'Unexpected breakpoint interrupt',CR,LF,'$'
+
+if PM
+if CATCHEXC06
+exc6msg	db 'Invalid opcode fault',CR,LF,'$'
+endif
+if CATCHEXC0C
+excCmsg	db 'Stack fault',CR,LF,'$'
+endif
+excDmsg	db 'General protection fault',CR,LF,'$'
+if EXCCSIP
+excloc	db 'CS:IP='
 exccsip db '    :    '
 		db  CR,LF,'$'
-%endif        
-excEmsg	db	'Page fault.',CR,LF,'$'
+endif
+excEmsg	db 'Page fault.',CR,LF,'$'
 nodosext db 'Command not supported in protected-mode without a DOS-Extender',CR,LF,'$'
 nopmsupp db 'Command not supported in protected-mode',CR,LF,'$'
-%if DISPHOOK
+if DISPHOOK
 dpmihook db 'DPMI entry hooked, new entry='
 dpmihookcsip db '    :    ',CR,LF,'$'
-%endif
-%if DOSEMU
-dDosEmuDate db "02/25/93"
-%endif
+endif
 nodesc	db 'resource not accessible in real-mode',CR,LF,'$'
-descwrong db 'descriptor not accessible',CR,LF,'$'
+;descwrong db 'descriptor not accessible',CR,LF,'$'
 gatewrong db 'gate not accessible',CR,LF,'$'
-%endif
+endif
+
 cantwritebp db "Can't write breakpoint",CR,LF,'$'
 
-progtrm	db	CR,LF,'Program terminated normally ('
-progexit db '    )',CR,LF,'$'
-nowhexe	db	'EXE and HEX files cannot be written',CR,LF,'$'
-nownull	db	'Cannot write: no file name given',CR,LF,'$'
-wwmsg1	db	'Writing $'
-wwmsg2	db	' bytes',CR,LF,'$'
-diskful	db	'Disk full',CR,LF,'$'
-wwerr	db	'Error '
-wwerr1	db	'____ opening file',CR,LF,'$'
-doserr2	db	'File not found',CR,LF,'$'
-doserr3	db	'Path not found',CR,LF,'$'
-doserr5	db	'Access denied',CR,LF,'$'
-doserr8	db	'Insufficient memory',CR,LF,'$'
+progtrm	db CR,LF,'Program terminated normally ('
+progexit db '____)',CR,LF,'$'
+nowhexe	db 'EXE and HEX files cannot be written',CR,LF,'$'
+nownull	db 'Cannot write: no file name given',CR,LF,'$'
+wwmsg1	db 'Writing $'
+wwmsg2	db ' bytes',CR,LF,'$'
+diskful	db 'Disk full',CR,LF,'$'
+openerr	db 'Error '
+openerr1 db '____ opening file',CR,LF,'$'
+doserr2	db 'File not found',CR,LF,'$'
+doserr3	db 'Path not found',CR,LF,'$'
+doserr5	db 'Access denied',CR,LF,'$'
+doserr8	db 'Insufficient memory',CR,LF,'$'
+
+;--- EMS error strings
+
 ;emmname	db	'EMMXXXX0'
-emsnot	db	'EMS not installed',CR,LF,'$'
-emserr1	db	'EMS internal error',CR,LF,'$'
-emserr3	db	'Handle not found',CR,LF,'$'
-emserr5	db	'No free handles',CR,LF,'$'
-emserr7	db	'Total pages exceeded',CR,LF,'$'
-emserr8	db	'Free pages exceeded',CR,LF,'$'
-emserr9	db	'Parameter error',CR,LF,'$'
-emserra	db	'Logical page out of range',CR,LF,'$'
-emserrb	db	'Physical page out of range',CR,LF,'$'
-emserrs	dw	emserr1,emserr1,0,emserr3,0,emserr5,0,emserr7,emserr8,emserr9
-	dw	emserra,emserrb
-emserrx	db	'EMS error '
-emserrxa db	'__',CR,LF,'$'
-xaans	db	'Handle created = '
-xaans1	db	'____',CR,LF,'$'
-xdans	db	'Handle '
-xdans1	db	'____ deallocated',CR,LF,'$'
-xrans	db	'Handle reallocated',CR,LF,'$'
-xmans	db	'Logical page '
-xmans1	db	'__ mapped to physical page '
-xmans2	db	'__',CR,LF,'$'
-xsstr1	db	'Handle '
-xsstr1a	db	'____ has '
-xsstr1b	db	'____ pages allocated',CR,LF,'$'
-xsstr2	db	'phys. page '
-xsstr2a	db	'__ = segment '
-xsstr2b	db	'____  ','$'
-xsstr3	db	'____ of a total '
-xsstr3a	db	'____ EMS $'
-xsstr4	db	'es have been allocated',CR,LF,'$'
-xsstrpg	db	'pag$'
-xsstrhd	db	'handl$'
-xsnopgs db	'no mappable pages',CR,LF,CR,LF,'$'
+emsnot	db 'EMS not installed',CR,LF,'$'
 
-;	Equates for instruction operands.
-;	First the sizes.
+emserr1	db 'EMS internal error',0
+emserr3	db 'Handle not found',0
+emserr5	db 'No free handles',0
+emserr7	db 'Total pages exceeded',0
+emserr8	db 'Free pages exceeded',0
+emserr9	db 'Parameter error',0
+emserra	db 'Logical page out of range',0
+emserrb	db 'Physical page out of range',0
+emserrx	db 'EMS error '
+emserrxa db '__',0
 
-OP_ALL	equ	40h		;byte/word/dword operand (could be 30h but ...)
-OP_1632	equ	50h		;word or dword operand
-OP_8	equ	60h		;byte operand
-OP_16	equ	70h		;word operand
-OP_32	equ	80h		;dword operand
+emserrs	dw emserr1,emserr1,0,emserr3,0,emserr5,0,emserr7,emserr8,emserr9
+		dw emserra,emserrb
 
-OP_SIZE	equ	OP_ALL		;the lowest of these
+xhelpmsg db 'Expanded memory (EMS) commands:',CR,LF
+	db '  Allocate	XA count',CR,LF
+	db '  Deallocate	XD handle',CR,LF
+	db '  Map memory	XM logical-page physical-page handle',CR,LF
+	db '  Reallocate	XR handle count',CR,LF
+	db '  Show status	XS',CR,LF,'$'
 
-;	These operand types need to be combined with a size.
+;--- strings used by XA, XD, XR and XM commands
 
-OP_IMM	equ	0		;immediate
-OP_RM	equ	2		;reg/mem
-OP_M	equ	4		;mem (but not reg)
-OP_R_MOD equ	6		;register, determined from MOD R/M part
-OP_MOFFS equ	8		;memory offset; e.g., [1234]
-OP_R	equ	10		;reg part of reg/mem byte
-OP_R_ADD equ	12		;register, determined from instruction byte
-OP_AX	equ	14		;al or ax or eax
+xaans	db 'Handle created = '
+xaans1	db '____',CR,LF,'$'
+xdans	db 'Handle '
+xdans1	db '____ deallocated',CR,LF,'$'
+xrans	db 'Handle reallocated',CR,LF,'$'
+xmans	db 'Logical page '
+xmans1	db '__ mapped to physical page '
+xmans2	db '__',CR,LF,'$'
 
-;	These don't need a size.
+;--- strings used by XS command
 
-OP_M64	equ	2		;qword memory
-OP_MFLOAT equ	4		;float memory
-OP_MDOUBLE equ	6		;double-precision floating memory
-OP_M80	equ	8		;tbyte memory
-OP_MXX	equ	10		;memory (size unknown)
-OP_FARMEM equ	12		;far memory
-OP_FARP	equ	14		;far pointer
-OP_REL8	equ	16		;byte address relative to IP
-OP_REL1632 equ	18		;word or dword address relative to IP
-OP_1CHK	equ	20		;check for ST(1)
-OP_STI	equ	22		;ST(I)
-OP_CR	equ	24		;CRx
-OP_DR	equ	26		;DRx
-OP_TR	equ	28		;TRx
-OP_SEGREG equ	30		;segment register
-OP_IMMS8 equ	32		;sign extended immediate byte
-OP_IMM8	equ	34		;immediate byte (other args may be (d)word)
-OP_ECX	equ	36		;ECX if 32-bit operands; otherwise nothing
-OP_SHOSIZ equ	38		;set flag to always show the size
-OP_1	equ	40		;1 (string ops from here on)
-OP_3	equ	42		;3
-OP_DX	equ	44		;DX
-OP_CL	equ	46		;CL
-OP_ST	equ	48		;ST (top of coprocessor stack)
-OP_CS	equ	50		;CS
-OP_DS	equ	52		;DS
-OP_ES	equ	54		;ES
-OP_FS	equ	56		;FS
-OP_GS	equ	58		;GS
-OP_SS	equ	60		;SS
+xsstr1	db 'Handle '
+xsstr1a	db '____ has '
+xsstr1b	db '____ pages allocated',CR,LF,'$'
+xsstr2	db 'phys. page '
+xsstr2a	db '__ = segment '
+xsstr2b	db '____  ','$'
+xsstr3	db '____ of a total '
+xsstr3a	db '____ EMS $'
+xsstr4	db 'es have been allocated',CR,LF,'$'
+xsstrpg	db 'pag$'
+xsstrhd	db 'handl$'
+xsnopgs	db 'no mappable pages',CR,LF,CR,LF,'$'
 
-;	Instructions that have an implicit operand subject to a segment override
-;	(outs, movs, cmps, lods, xlat).
+;--- Equates for instruction operands.
+;--- First the sizes.
 
-prfxtab	db	06eh,06fh,0a4h,0a5h,0a6h,0a7h,0ach,0adh,0d7h
-P_LEN	equ	9
+OP_ALL	equ 40h		;byte/word/dword operand (could be 30h but ...)
+OP_1632	equ 50h		;word or dword operand
+OP_8	equ 60h		;byte operand
+OP_16	equ 70h		;word operand
+OP_32	equ 80h		;dword operand
+OP_64	equ 90h		;qword operand
 
-;	Instructions that can be used with REP/REPE/REPNE.
+OP_SIZE	equ OP_ALL		;the lowest of these
 
-replist	db	06ch,06eh,0a4h,0aah,0ach		;REP
-	db	0a6h,0aeh				;REPE/REPNE
+;--- These operand types need to be combined with a size.
 
-	%include "debugtbl.inc"
+OP_IMM		equ 0		;immediate
+OP_RM		equ 2		;reg/mem
+OP_M		equ 4		;mem (but not reg)
+OP_R_MOD	equ 6		;register, determined from MOD R/M part
+OP_MOFFS	equ 8		;memory offset; e.g., [1234]
+OP_R		equ 10		;reg part of reg/mem byte
+OP_R_ADD 	equ 12		;register, determined from instruction byte
+OP_AX		equ 14		;al or ax or eax
 
-%if PM
+;--- These don't need a size.
 
-dpmientry dd 0	;dpmi entry point returned by dpmi host
-dpmiwatch dd 0	;
-dssel     dw 0	;debugger's segment DATA
-cssel     dw 0	;debugger's segment CODE
-scratchsel dw 0	;scratch selector used for various purposes
-dpmi32    db 0	;00=16-bit client, else 32-bit client
-bNo2FHook db 0  ;int 2F, ax=1687h is not hooked (win9x dos box, DosEmu?)
-bCSAttr   db 0  ;CS attribute
-bAddr32	  db 0  ;Address attribute. if 1, hiword(edx) is valid
+OP_M64		equ 2		; 0 qword memory (obsolete?)
+OP_MFLOAT	equ 4		; 1 float memory
+OP_MDOUBLE	equ 6		; 2 double-precision floating memory
+OP_M80		equ 8		; 3 tbyte memory
+OP_MXX		equ 10		; 4 memory (size unknown)
+OP_FARMEM	equ 12		; 5 memory far16/far32 pointer 
+OP_FARIMM	equ 14		; 6 far16/far32 immediate
+OP_REL8		equ 16		; 7 byte address relative to IP
+OP_REL1632	equ 18		; 8 word or dword address relative to IP
+OP_1CHK		equ 20		; 9 check for ST(1)
+OP_STI		equ 22		;10 ST(I)
+OP_CR		equ 24		;11 CRx
+OP_DR		equ 26		;12 DRx
+OP_TR		equ 28		;13 TRx
+OP_SEGREG	equ 30		;14 segment register
+OP_IMMS8	equ 32		;15 sign extended immediate byte
+OP_IMM8		equ 34		;16 immediate byte (other args may be (d)word)
+OP_MMX		equ 36		;17 MMx
+OP_SHOSIZ	equ 38		;18 set flag to always show the size
 
-exctab:
-	db 0
-    dw exc00, exc0032
-	db 1
-    dw exc01, exc0132
-	db 3
-    dw exc03, exc0332
-%if 0
-	db 06h
-    dw exc06, exc0632
-%endif
-%if 1
-	db 0Ch
-    dw exc0c, exc0c32
-%endif
-	db 0Dh
-    dw exc0d, exc0d32
-	db 0Eh
-    dw exc0e, exc0e32
-    db -1
+OP_1		equ 40		;1 (simple "string" ops from here on)
+OP_3		equ 42		;3
+OP_DX		equ 44		;DX
+OP_CL		equ 46		;CL
+OP_ST		equ 48		;ST (top of coprocessor stack)
+OP_CS		equ 50		;CS
+OP_DS		equ 52		;DS
+OP_ES		equ 54		;ES
+OP_FS		equ 56		;FS
+OP_GS		equ 58		;GS
+OP_SS		equ 60		;SS
+
+;--- Instructions that have an implicit operand subject to a segment override
+;--- (outsb/w, movsb/w, cmpsb/w, lodsb/w, xlat).
+
+prfxtab	db 06eh,06fh, 0a4h,0a5h, 0a6h,0a7h, 0ach,0adh, 0d7h
+P_LEN	equ $ - prfxtab
+
+;--- Instructions that can be used with REP/REPE/REPNE.
+
+replist	db 06ch,06eh,0a4h,0aah,0ach	;REP (INSB, OUTSB, MOVSB, STOSB, LODSB)
+		db 0a6h,0aeh				;REPE/REPNE (CMPSB, SCASB)
+
+	include <debugtbl.inc>
+
+opindex label byte
+	.radix 16t
+opidx = 0
+	repeat ASMMOD
+if opidx lt 10h
+oi_name textequ <OPLIST_0>,%opidx
+else
+oi_name textequ <OPLIST_>,%opidx
+endif
+	db oi_name
+opidx = opidx + 1
+	endm
+	.radix 10t
+
+if PM
+
+	include <fptostr.inc>
+
+dpmientry dd 0  ;dpmi entry point returned by dpmi host
+dpmiwatch dd 0
+dssel     dw 0  ;debugger's segment DATA
+cssel     dw 0  ;debugger's segment CODE
+scratchsel dw 0 ;scratch selector used for various purposes
+dpmi32    db 0  ;00=16-bit client, else 32-bit client
+bNoHook2F db 0  ;int 2F, ax=1687h cannot be hooked (win9x dos box, DosEmu?)
+bCSAttr   db 0  ;current code attribute (D bit).
+bAddr32   db 0  ;Address attribute. if 1, hiword(edx) is valid
+
+;--- int 2F handler
 
 debug2F:
 	pushf
-	cmp	ax,1687h
-    jz dpmiquery
-    popf
-    jmp far [cs:oldi2f]
+	cmp ax,1687h
+dpmidisable:		;set [IP+1]=0 if hook 2F is to be disabled    
+	jz dpmiquery
+	popf
+	jmp cs:[oldi2f]
 dpmiquery:
-	call far [cs:oldi2f]
-    and ax,ax
-    jnz nodpmi
-	mov [cs:dpmientry+0],di
-	mov [cs:dpmientry+2],es
-    mov di,mydpmientry
-    push cs
-    pop es
-nodpmi:    
+	call cs:[oldi2f]
+	and ax,ax
+	jnz nodpmi
+	mov word ptr cs:[dpmientry+0],di
+	mov word ptr cs:[dpmientry+2],es
+	mov di,offset mydpmientry
+	push cs
+	pop es
+nodpmi:
 	iret
 mydpmientry:
-	mov [cs:dpmi32],al
-	call far [cs:dpmientry]
-    jc dpmifailed
-    call installdpmi
-dpmifailed:
-    retf
+	mov cs:[dpmi32],al
+	call cs:[dpmientry]
+	jc @F
+	call installdpmi
+@@:
+	retf
 
-%if NASM
-	cpu 286
-%else    
-	cpu 286 protected
-%endif
+	.286
 
 ;--- inp: [sp+4] = client real-mode CS
     
-installdpmi:
-    pusha
-    mov bp,sp		;[bp+16] = ret, [bp+18]=ip, [bp+20]=cs
-    push ds
-    mov bx,cs
-    mov ax,000Ah
-    int 31h
-    jnc id_0
-    jmp fataldpmierr
-id_0:
-    mov ds,ax
-    mov [cssel],cs
-    mov [dssel],ds
-    mov cx,2
-    xor ax,ax
-    int 31h
-    jnc id_1
-    jmp fataldpmierr
-id_1:    
-    mov [scratchsel],ax
-    mov bx,ax
-    xor cx,cx
-    cmp byte [dpmi32],0
-    jz instdpmi_1
-    dec cx			;set a limit of FFFFFFFFh
-instdpmi_1:
-    or dx,-1
-    mov ax,0008h
-    int 31h
-    add bx,8		;the second selector is clients CS
-    xor cx,cx		;this limit is FFFF even for 32-bits
-    mov ax,0008h
-    int 31h
-    mov dx,[bp+20]	;get client's CS
-    mov cx,dx
-    shl dx,4
-    shr cx,12
-    mov ax,0007h
-    int 31h
-    mov ax,cs
-    lar cx,ax
-    shr cx,8		;CS remains 16-bit
-    mov ax,0009h
-    int 31h
-    mov [bp+20],bx
-    
-    mov bx,word [pInDOS+2]
-    mov ax,0002h
-    int 31h
-    jc  fataldpmierr
-    mov word [pInDOS+2],ax
-%if USESDA
-    mov bx,word [pSDA+2]
-    mov ax,0002h
-    int 31h
-    jc  fataldpmierr
-    mov word [pSDA+2],ax
-%endif
-%if 1    
-    mov bx,[run_cs]
-    mov ax,0002h
-    int 31h
-    jc  fataldpmierr
-    mov [run_cs],ax
-%endif
-%if 0    
-    mov bx,[d_addr+4]
-    and bx,bx
-    jz  nodsegm
-    mov ax,0002h
-    int 31h
-    jc  fataldpmierr
-    mov [d_addr+4],ax
-nodsegm:    
-%endif
-%if 1
-    mov bx,[a_addr+4]
-    and bx,bx
-    jz  noasegm
-    mov ax,0002h
-    int 31h
-    jc  fataldpmierr
-    mov [a_addr+4],ax
-noasegm:
-%endif
-	mov si,exctab
-    cld
-next_exc:    
-    lodsb
-    cmp al,-1
-    jz exc_done
-    mov bl,al
-    lodsw
-    mov dx,ax
-    lodsw
-    mov cx,cs
-    cmp byte [dpmi32],0
-    jz is16
-    cpu 386
-    push edx
-    movzx edx,ax
-    mov ax,0203h
-    int 31h
-    pop edx
-    cpu 286
-    jmp next_exc
-is16:
-    mov ax,0203h
-    int 31h
-    jmp next_exc
-exc_done:    
-    mov bl,2Fh
-    mov ax,200h
-    int 31h
-    cmp cx,[pspdbg]
-    jnz int2fnotours
-    mov dx,[oldi2f+0]
-    xor cx,cx
-    xchg cx,[oldi2f+2]
-    mov ax,201h
-    int 31h
-int2fnotours:    
-    pop ds
-    popa
-    clc
-    ret
+installdpmi proc
+	pusha
+	mov bp,sp		;[bp+16] = ret, [bp+18]=ip, [bp+20]=cs
+	push ds
+	mov bx,cs
+	mov ax,000Ah	;get a data descriptor for DEBUG's segment
+	int 31h
+	jc fataldpmierr
+	mov ds,ax
+	mov [cssel],cs
+	mov [dssel],ds
+	mov cx,2		;alloc 2 descriptors
+	xor ax,ax
+	int 31h
+	jnc @F
 fataldpmierr:
 	mov ax,4CFFh
-    int 21h
+	int 21h
+@@:
+	mov [scratchsel],ax	;the first is used as scratch descriptor
+	mov bx,ax
+	xor cx,cx
+if 1
+	cmp [machine],3				;is at least a 80386?
+	jb @F
+else
+	cmp [dpmi32],0		;is a 16-bit client?
+	jz @F
+endif
+	dec cx			;set a limit of FFFFFFFFh
+@@:
+	or dx,-1
+	mov ax,0008h
+	int 31h
+	add bx,8		;the second selector is client's CS
+	xor cx,cx		;this limit is FFFF even for 32-bits
+	mov ax,0008h
+	int 31h
+	mov dx,[bp+20]	;get client's CS
+	call setrmaddr	;set base
+	mov ax,cs
+	lar cx,ax
+	shr cx,8		;CS remains 16-bit
+	mov ax,0009h
+	int 31h
+	mov [bp+20],bx
 
-;--- exception frame:
-;--- +0     regs
-;--- +16    exc no
-;--- +18    retf (dpmi return far16/32)
-;--- +22    error code
-;--- +24    e/ip
-;--- +26    cs
-;--- +28    e/fl
-;--- +30    e/sp
-;--- +32    ss
+	cld
 
-exc00:
-	push int0msg
-    jmp exc_xx
-exc01:
-	push int1msg
-    jmp exc_xx
-exc03:
-	push int3msg
-    jmp exc_xx
-%if 0
-exc06:
-	push exc6msg
-    jmp exc_xx
-%endif    
-%if 1    
-exc0c:
-	push excCmsg
-    jmp exc_xx
-%endif    
-exc0d:
-	push excDmsg
-    jmp exc_xx
-exc0e:
-	push excEmsg
-exc_xx:    
-    pusha
-    mov bp,sp
-    push ds
-    mov ds,[cs:dssel]
-    mov ax,[bp+24]
-    mov bx,[bp+26]
-    mov cx,[bp+28]
-    mov dx,[bp+30]
-    mov si,[bp+32]
-    mov [bp+26], cs
-    mov [bp+32], ds
-    mov di,[bp+16]
-	mov	word [run_int],di
-    cmp [bInDbg],byte 0
-    jz isdebuggee
-    push ds
-    pop es
-%if EXCCSIP
-    mov di,exccsip		;render CS:IP if internal GPF
-    mov ax,bx
-    call hexword
-    inc di
-    mov ax,[bp+24]
-    call hexword
-%endif    
-    mov word [bp+24],tt2x
-    mov ax,[savesp]
-    mov [bp+30], ax
-    and byte [bp+28+1], ~1	;reset TF
-    pop ax
-    jmp isdebugger
-isdebuggee:
-    mov word [bp+24], intrtn2
-    and byte [bp+28+1], ~3		;reset IF + TF
-    mov word [bp+30], reg_ss
-    mov [reg_ip],ax
-    mov [reg_cs],bx
-    mov [reg_fl],cx
-    mov [reg_sp],dx
-    mov [reg_ss],si
-    mov ax,[bp-2]
-    mov [reg_ds],ax
+	mov si,offset convsegs
+	mov cx,NUMSEGS
+@@:
+	lodsw
+	mov di,ax
+	mov bx,[di]
+	mov ax,2
+	int 31h
+	jc fataldpmierr
+	mov [di],ax
+	loop @B
+
+	mov si,offset exctab	;hook several exceptions
+	mov dx,offset exc00
+	sizeprf	;push edx
+	push dx
+	cmp [dpmi32],0
+	jz @F
+	.386
+	movzx edx,dx
+	.286
+@@:
+	lodsb
+	mov bl,al
+	mov cx,cs
+	mov ax,0203h
+	int 31h
+	add dx,exc01-exc00
+	cmp si,offset endexctab
+	jb @B
+	sizeprf	;pop edx
+	pop dx
+	mov bl,2Fh			;get int 2Fh real-mode vector
+	mov ax,200h
+	int 31h
+	cmp cx,[pspdbg]		;did we hook it and are the last in chain?
+	jnz int2fnotours
+	mov dx,word ptr [oldi2f+0]
+	xor cx,cx
+	xchg cx,word ptr [oldi2f+2]	;then unhook
+	mov ax,201h
+	int 31h
+int2fnotours:
 	pop ds
-isdebugger:
-    popa
-    add sp,2
-    retf
-
-	cpu 386
-    
-exc0032:
-	push dword int0msg
-    jmp exc32_xx
-exc0132:
-	push dword int1msg
-    jmp exc32_xx
-exc0332:
-	push dword int3msg
-    jmp exc32_xx
-%if 0
-exc0632:
-	push dword exc6msg
-    jmp exc32_xx
-%endif    
-%if 1    
-exc0c32:
-	push dword excCmsg
-    jmp exc32_xx
-%endif    
-exc0d32:
-	push dword excDmsg
-    jmp exc32_xx
-exc0e32:
-	push dword excEmsg
-exc32_xx:
-    pushad
-    mov ebp,esp
-    push ds
-    mov ds,[cs:dssel]
-    mov eax,[ebp+24*2]
-    mov bx,[ebp+26*2]
-    mov ecx,[ebp+28*2]
-    mov edx,[ebp+30*2]
-    mov si,[ebp+32*2]
-    mov [ebp+26*2], cs
-    mov [ebp+32*2], ds
-    mov di,[ebp+16*2]
-	mov	word [run_int],di
-    cmp [bInDbg],byte 0
-    jz isdebuggee32
-    push ds
-    pop es
-%if EXCCSIP
-    mov di,exccsip
-    mov ax,bx
-    call hexword
-    inc di
-    mov ax,[ebp+24*2]
-    call hexword
-%endif    
-    mov dword [ebp+24*2],tt2x
-    movzx eax,word [savesp]
-    mov [ebp+30*2], eax
-    and byte  [ebp+28*2+1], ~1		;reset TF
-    pop ax
-    jmp isdebugger32
-isdebuggee32:
-    mov dword [ebp+24*2], intrtn2
-    and byte  [ebp+28*2+1], ~3		;reset IF + TF
-    mov dword [ebp+30*2], reg_ss
-    mov [reg_ip],ax
-    mov [reg_cs],bx
-    mov [reg_fl],cx
-    mov [reg_sp],dx
-    mov [reg_ss],si
-    shr eax,16
-    shr ecx,16
-    shr edx,16
-    mov [regh_eip],ax
-    mov [regh_efl],cx
-    mov [regh_esp],dx
-    mov ax,[ebp-2]
-    mov [reg_ds],ax
-	pop ds
-isdebugger32:
-    popad
-    add esp,4
-	db 66h
-    retf
-
-getattrhigh:
-	push ecx
-    lar ecx,eax
-    shr ecx,8
-    mov ah,ch
-    pop ecx
-    test ah,40h
-    ret
-getesihigh:
-    mov eax,esi
-    shr eax,16
-    ret
-
-;--- get attribute of selector BX into AX
-
-getattrbx:    
-	lar ax,bx
-    shr ax,8
-    cmp byte [cs:dpmi32],0
-    jz nodefbit
-    lar eax,ebx
-	shr eax,8
-nodefbit:
+	popa
+	clc
 	ret
 
-	cpu 8086
-    
-%endif	;PM
+convsegs label word
+	dw offset run_cs
+	dw offset pInDOS+2
+if USESDA
+	dw offset pSDA+2
+endif
+	dw offset a_addr+4
+	dw offset d_addr+4
+NUMSEGS equ ($-convsegs)/2
 
-;	debug22 - INT 22 (Program terminate) interrupt handler.
-;	This is for DEBUG itself:  it's a catch-all for the various INT 23
-;	and INT 24 calls that may occur unpredictably at any time.
-;	What we do is pretend to be a command interpreter (which we are,
-;	in a sense, just a different sort of command) by setting the PSP of
-;	our parent equal to our own PSP so that DOS does not free our memory
-;	when we quit.  Therefore control ends up here when Control-Break or
-;	an Abort in Abort/Retry/Fail is selected.
+exctab label byte
+	db 0
+	db 1
+	db 3
+if CATCHEXC06
+	db 06h
+endif
+if CATCHEXC0C
+	db 0Ch
+endif
+	db 0Dh
+	db 0Eh
+endexctab label near
+
+EXFR16 struc
+	dw 8 dup (?)
+	dw 2 dup (?)
+	dw ?
+rIP	dw ?
+rCS	dw ?
+rFL	dw ?
+rSP	dw ?
+rSS	dw ?
+EXFR16 ends
+
+EXFR32 struc
+		dd 8 dup (?)
+		dd 2 dup (?)
+		dd ?
+rEIP	dd ?
+rCS		dw ?
+		dw ?
+rEFL	dd ?
+rESP	dd ?
+rSS		dw ?
+		dw ?
+EXFR32 ends
+
+exc16_xx:
+	pusha
+	mov bp,sp
+	push ds
+	mov ds,cs:[dssel]
+	mov ax,[bp].EXFR16.rIP
+	mov bx,[bp].EXFR16.rCS
+	mov cx,[bp].EXFR16.rFL
+	mov dx,[bp].EXFR16.rSP
+	mov si,[bp].EXFR16.rSS
+	mov [bp].EXFR16.rCS, cs
+	mov [bp].EXFR16.rSS, ds
+	cmp [bInDbg],0				;did the exception occur inside DEBUG?
+	jz isdebuggee16
+	push ds
+	pop es
+if EXCCSIP
+	mov di,offset exccsip		;render CS:IP if internal GPF
+	mov ax,bx
+	call hexword
+	inc di
+	mov ax,[bp].EXFR16.rIP
+	call hexword
+endif
+	mov [bp].EXFR16.rIP,offset ue_intx
+	mov ax,[savesp]
+	mov [bp].EXFR16.rSP, ax
+	and byte ptr [bp].EXFR16.rFL+1, not 1	;reset TF
+	pop ax
+	jmp isdebugger16
+isdebuggee16:
+	mov [bp].EXFR16.rIP, offset intrtn2
+	and byte ptr [bp].EXFR16.rFL+1, not 3	;reset IF + TF
+	mov [bp].EXFR16.rSP, offset regs.rSS
+	mov [regs.rIP],ax
+	mov [regs.rCS],bx
+	mov [regs.rFL],cx
+	mov [regs.rSP],dx
+	mov [regs.rSS],si
+;	pop ax
+;	mov [regs.rDS],ax
+;	mov ds,ax
+	pop ds
+isdebugger16:
+	popa
+	retf
+
+exc00:
+	push ds
+	push offset int0msg
+	jmp exc_xx
+exc01:
+	push ds
+	push offset int1msg
+	jmp exc_xx
+exc03:
+	push ds
+	push offset int3msg
+	jmp exc_xx
+if CATCHEXC06
+exc06:
+	push ds
+	push offset exc6msg
+	jmp exc_xx
+endif
+if CATCHEXC0C
+exc0c:
+	push ds
+	push offset excCmsg
+	jmp exc_xx
+endif
+exc0d:
+	push ds
+	push offset excDmsg
+	jmp exc_xx
+exc0e:
+	push ds
+	push offset excEmsg
+exc_xx:
+	mov ds,cs:[dssel]
+	pop [run_int]
+	cmp [dpmi32],0
+	pop ds
+	jz exc16_xx
+
+	.386
+
+	pushad
+	mov ebp,esp
+	push ds
+	mov ds,cs:[dssel]
+	mov eax,[ebp].EXFR32.rEIP
+	mov bx, [ebp].EXFR32.rCS
+	mov ecx,[ebp].EXFR32.rEFL
+	mov edx,[ebp].EXFR32.rESP
+	mov si, [ebp].EXFR32.rSS
+	mov [ebp].EXFR32.rCS, cs
+	mov [ebp].EXFR32.rSS, ds
+	cmp [bInDbg],0	;did the exception occur inside DEBUG?
+	jz isdebuggee32
+	push ds
+	pop es
+if EXCCSIP
+	mov di,offset exccsip
+	mov ax,bx
+	call hexword
+	inc di
+	mov ax,word ptr [ebp].EXFR32.rEIP	;ignore hiword EIP here!
+	call hexword
+endif
+	mov [ebp].EXFR32.rEIP,offset ue_intx
+	movzx eax,[savesp]
+	mov [ebp].EXFR32.rESP, eax
+	and byte ptr [ebp].EXFR32.rEFL+1, not 1	;reset TF
+	pop ax
+	jmp isdebugger32
+isdebuggee32:
+	mov [ebp].EXFR32.rEIP, offset intrtn2
+	and byte ptr  [ebp].EXFR32.rEFL+1, not 3;reset IF + TF
+	mov [ebp].EXFR32.rESP, offset regs.rSS
+	mov dword ptr [regs.rIP], eax
+	mov [regs.rCS],bx
+	mov [regs.rFL],cx
+	mov dword ptr [regs.rSP],edx
+	mov [regs.rSS],si
+;	pop ax
+;	mov [regs.rDS],ax
+;	mov ds,ax
+	pop ds
+isdebugger32:
+	popad
+	db 66h
+	retf
+
+installdpmi endp
+
+i23pm:
+	cmp cs:[dpmi32],0
+	jz @F
+	db 66h
+	retf 4
+@@:
+	retf 2
+i24pm:
+	cmp cs:[dpmi32],0
+	jz @F
+	db 66h
+@@:
+	iret
+
+	.8086
+
+endif	;PM
+
+;   debug22 - INT 22 (Program terminate) interrupt handler.
+;   This is for DEBUG itself:  it's a catch-all for the various INT 23
+;   and INT 24 calls that may occur unpredictably at any time.
+;   What we do is pretend to be a command interpreter (which we are,
+;   in a sense, just a different sort of command) by setting the PSP of
+;   our parent equal to our own PSP so that DOS does not free our memory
+;   when we quit.  Therefore control ends up here when Control-Break or
+;   an Abort in Abort/Retry/Fail is selected.
 
 debug22:
 	cld			;reestablish things
-	mov	ax,cs
-	mov	ds,ax
-	mov	ss,ax
+	mov ax,cs
+	mov ds,ax
+	mov ss,ax
 
-;	Begin main command loop.
+;--- fall through to cmdloop
 
-cmd3:
-	mov	sp,[savesp]	;restore stack (this must be first)
-	mov	word [errret],cmd3
-    push ds
-    pop es
-    call isdebuggeeloaded
-    jnz taskok
-    call createdummytask	;if no task is active, create a dummy one
-taskok:
-	mov	dx,prompt1
-%if PM    
-    call ispm
-    jnz cmd3_1
-    mov dx,prompt3
-cmd3_1:
-%endif
-	mov	cx,1
+;--- Begin main command loop.
+
+cmdloop proc
+	mov sp,[savesp]	;restore stack (this must be first)
+	mov [errret],offset cmdloop
+	push ds
+	pop es
+	call isdebuggeeloaded
+	jnz @F
+	call createdummytask	;if no task is active, create a dummy one
+@@:
+	mov dx,offset prompt1
+if PM
+	call ispm
+	jz @F
+	mov dx,offset prompt3
+@@:
+endif
+	mov cx,1
 	call getline	;prompted input
-	cmp	al,CR
-	jnz	isnotblank
-    mov dx, [lastcmd]
-    dec si
-    jmp cmd4
-isnotblank:    
-	cmp	al,';'
-	je	cmd3		;if comment
-	cmp	al,'?'
-	je	help		;if request for help
-	or	al,TOLOWER
-	sub	al,'a'
-	cmp	al,'x'-'a'
-	ja	errorj1		;if not recognized
+	cmp al,CR
+	jnz @F
+	mov dx, [lastcmd]
+	dec si
+	jmp cmd4
+@@:
+	cmp al,';'
+	je cmdloop	;if comment
+	cmp al,'?'
+	je help		;if request for help
+	or al,TOLOWER
+	sub al,'a'
+	cmp al,'x'-'a'
+	ja errorj1		;if not recognized
 	cbw
 	xchg bx,ax
 	call skipcomma
-	shl	bx,1
-    mov dx,[cmdlist+bx]
-    mov word [lastcmd],dmycmd
-cmd4:    
-	mov	di,line_out
+	shl bx,1
+	mov dx,[cmdlist+bx]
+	mov [lastcmd],offset dmycmd
+cmd4:
+	mov di,offset line_out
 	call dx
-	jmp	cmd3		;back to the top
+	jmp cmdloop		;back to the top
+
+errorj1:
+	jmp cmd_error
+
+cmdloop endp
+
+
 
 dmycmd:
 	ret
 
-waitkey:
-	cmp byte [notatty],0
-    jnz nowait
-	mov bx,1
-    mov ax,4400h
-    int 21h
-    test dl,80h
-    jz nowait
-	push es
-    mov ax,40h
-    mov es,ax
-    cmp byte [es:84h],30
-	pop es
-    jnc nowait
-    mov dx,presskey
-    mov ah,9
-    int 21h
-    mov ah,8
-    int 21h
-    mov dl,13
-    mov ah,2
-    int 21h
-nowait:    
-    ret
-
 help:
-	mov	dx,helpmsg
+	mov dx,offset helpmsg
 	call int21ah9	;print string
-    call waitkey
-	mov	dx,helpmsg2
-prnquit:
+	call waitkey
+	mov dx,offset helpmsg2
+prnquit:	;<--- print message and return to cmd loop
+	call int21ah9	;print string in dx
+	jmp cmdloop		;done
+
+waitkey proc
+	cmp [notatty],0
+	jnz nowait
+	mov bx,1
+	mov ax,4400h	;is stdout a device?
+	int 21h
+	test dl,80h
+	jz nowait
+	push es
+	mov ax,40h		;0040h is a bimodal segment/selector
+	mov es,ax
+	cmp byte ptr es:[84h],30
+	pop es
+	jnc nowait
+	mov dx,offset presskey
 	call int21ah9	;print string
-	jmp	cmd3		;done
+	mov ah,8
+	int 21h
+	mov dl,13
+	mov ah,2
+	int 21h
+nowait:    
+	ret
+waitkey endp
 
-errorj1:jmp	error
+;--- A command - tiny assembler.
 
-;	A command - tiny assembler.
+asm_mn_flags	db 0	;flags for the mnemonic
 
-asm_mn_flags	db	0		;flags for the mnemonic
-AMF_D32		equ	1		;(order is important for D32/WAIT)
-AMF_WAIT	equ	2
-AMF_A32		equ	4		;if this is 32 bit addressing
-AMF_SIB		equ	8		;there's a SIB in the arguments
-AMF_MSEG	equ	10h		;if a seg prefix was given b4 mnemonic
-AMF_FSGS	equ	20h		;if FS or GS was encountered
+AMF_D32		equ 1		;32bit opcode/data operand
+AMF_WAIT	equ 2
+AMF_A32		equ 4		;address operand is 32bit
+AMF_SIB		equ 8		;there's a SIB in the arguments
+AMF_MSEG	equ 10h		;if a seg prefix was given b4 mnemonic
+AMF_FSGS	equ 20h		;if FS or GS was encountered
 
-AMF_D32SET	equ 40h		;AMF_D32 is *set*
-AMF_A32SET	equ 80h		;AMF_A32 is *set*
+AMF_D16		equ 40h		;16bit opcode/data operand
+AMF_ADDR	equ 80h		;address operand is given
 
-aa_saved_prefix	db	0		;WAIT or REP... prefix
-;		aa_saved_prefix and aa_seg_pre must be consecutive.
-aa_seg_pre	db	0		;segment prefix
+;--- aa_saved_prefix and aa_seg_pre must be consecutive.
+aa_saved_prefix	db 0	;WAIT or REP... prefix
+aa_seg_pre	db 0		;segment prefix
 
-mneminfo	dw	0		;address associated with the mnemonic
+mneminfo	dw 0		;address associated with the mnemonic
 
-;	The following (through a_opcode) must all be consecutive.
+;--- The following 7  words (through a_opcode) must all be consecutive.
 
-rmaddr		dw	0		;address of operand giving the R/M byte
-regmem		db	0		;mod reg r/m part of instruction
-					;regmem and sibbyte must be consecutive
-sibbyte		db	0		;SIB byte
-immaddr		dw	0		;address of operand giving the immed stf
-xxaddr		dw	0		;address of additional stuff
-dismach		db	0		;type of processor needed
-dmflags		db	0		;flags for extra processor features
+rmaddr		dw 0		;address of operand giving the R/M byte
+;--- regmem and sibbyte must be consecutive
+regmem		db 0		;mod reg r/m part of instruction
+sibbyte		db 0		;SIB byte
+immaddr		dw 0		;address of operand giving the immed stf
+xxaddr		dw 0		;address of additional stuff
+;--- dismach and dmflags must be consecutive
+dismach		db 0		;type of processor needed
+dmflags		db 0		;flags for extra processor features
 
-	DM_COPR	equ	1		;math coprocessor
-	DM_MMX	equ	2		;MMX extensions
+DM_COPR		equ 1		;math coprocessor
+DM_MMX		equ 2		;MMX extensions
 
-opcode_or	db	0		;extra bits in the op code
-opsize		db	0		;size of this operation
-varflags	db	0		;flags for this variant
+opcode_or	db 0		;extra bits in the op code
+opsize		db 0		;size of this operation (2 or 4)
+varflags	db 0		;flags for this variant
 
-VAR_LOCKABLE	equ	1		;variant is lockable
-VAR_MODRM	equ	2		;if there's a MOD R/M here
-VAR_SIZ_GIVN	equ	4		;if a size was given
-VAR_SIZ_FORCD	equ	8		;if only one size is permitted
-VAR_SIZ_NEED	equ	10h		;if we need the size
-VAR_D32		equ	20h		;if there's a 32 bit operand size prefix
+VAR_LOCKABLE	equ 1	;variant is lockable
+VAR_MODRM		equ 2	;if there's a MOD R/M here
+VAR_SIZ_GIVN	equ 4	;if a size was given
+VAR_SIZ_FORCD	equ 8	;if only one size is permitted
+VAR_SIZ_NEED	equ 10h	;if we need the size
+VAR_D16			equ 20h	;if operand size is WORD
+VAR_D32			equ 40h	;if operand size is DWORD
 
-a_opcode	dw	0		;op code info for this variant
-a_reqsize	db	0		;size that this arg should be
+a_opcode	dw 0		;op code info for this variant
+a_reqsize	db 0		;size that this arg should be
 
-a_opcode2	dw	0		;copy of a_opcode for obs-instruction
-		dw	0dbe0h,0dbe1h,0dbe4h,124h,126h	;obs. instruction codes
+a_opcode2	dw 0		;copy of a_opcode for obs-instruction
+			dw 0dbe0h,0dbe1h,0dbe4h,124h,126h	;obs. instruction codes
 					;(the above must follow a_opcode2)
 
-obsmach		db	1,1,2,4,4	;max permissible machine for the above
+obsmach		db 1,1,2,4,4	;max permissible machine for the above
 
-aadbsiz		db	0,4,2,1		;table for max size of db operand
-aadbsto		dw	0,aa28,aa29,aa30;table for routine to store a number
+modrmtab	db 11,0,13,0,15,0,14,0	;[bx], [bp], [di], [si]
+			db 15,13,14,13,15,11,14,11	;[bp+di],[bp+si],[bx+di],[bx+si]
 
-modrmtab	db	11,0,13,0,15,0,14,0	;[bx], [bp], [di], [si]
-		db	15,13,14,13,15,11,14,11	;[bp+di],[bp+si],[bx+di],[bx+si]
+aam_args	db 'a',CR
 
-aam_args	db	'a',CR
+;--- Equates for parsed arguments, stored in OPRND.flags
 
-;	Equates for parsed arguments.
+ARG_DEREF		equ 1	;non-immediate memory reference
+ARG_MODRM		equ 2	;if we've computed the MOD R/M byte
+ARG_JUSTREG		equ 4	;a solo register
+ARG_WEIRDREG	equ 8	;if it's a segment register or CR, etc.
+ARG_IMMED		equ 10h	;if it's just a number
+ARG_FARADDR		equ 20h	;if it's of the form xxxx:yyyyyyyy
 
-ARG_DEREF	equ	1	;non-immediate memory reference
-ARG_MODRM	equ	2	;if we've computed the MOD R/M byte
-ARG_JUSTREG	equ	4	;a solo register
-ARG_WEIRDREG	equ	8	;if it's a segment register or CR, etc.
-ARG_IMMED	equ	10h	;if it's just a number
-ARG_FARADDR	equ	20h	;if it's of the form xxxx:yyyyyyyy
+;--- For each operand type in the following table, the first byte is
+;--- the bits, at least one of which must be present; the second is the
+;--- bits all of which must be absent.
+;--- for each entry in bittab, there's an entry in asm_jmp1 array
 
-;	For each operand type in the following table, the first byte is
-;	the bits, at least one of which must be present; the second is the
-;	bits all of which must be absent.
+bittab	db ARG_IMMED				;OP_IMM
+		db ARG_DEREF+ARG_JUSTREG	;OP_RM
+		db ARG_DEREF				;OP_M
+		db ARG_JUSTREG				;OP_R_MOD
+		db ARG_DEREF				;OP_MOFFS
+		db ARG_JUSTREG				;OP_R
+		db ARG_JUSTREG				;OP_R_ADD
+		db ARG_JUSTREG				;OP_AX
 
-bittab		db	ARG_IMMED				;OP_IMM
-		db	ARG_DEREF+ARG_JUSTREG			;OP_RM
-		db	ARG_DEREF				;OP_M
-		db	ARG_JUSTREG				;OP_R_MOD
-		db	ARG_DEREF				;OP_MOFFS
-		db	ARG_JUSTREG				;OP_R
-		db	ARG_JUSTREG				;OP_R_ADD
-		db	ARG_JUSTREG				;OP_AX
-		db	ARG_DEREF				;OP_M64
-		db	ARG_DEREF				;OP_MFLOAT
-		db	ARG_DEREF				;OP_MDOUBLE
-		db	ARG_DEREF				;OP_M80
-		db	ARG_DEREF				;OP_MXX
-		db	ARG_DEREF				;OP_FARMEM
-		db	ARG_FARADDR				;OP_FARP
-		db	ARG_IMMED				;OP_REL8
-		db	ARG_IMMED				;OP_REL1632
-		db	ARG_WEIRDREG				;OP_1CHK
-		db	ARG_WEIRDREG				;OP_STI
-		db	ARG_WEIRDREG				;OP_CR
-		db	ARG_WEIRDREG				;OP_DR
-		db	ARG_WEIRDREG				;OP_TR
-		db	ARG_WEIRDREG				;OP_SEGREG
-		db	ARG_IMMED				;OP_IMMS8
-		db	ARG_IMMED				;OP_IMM8
-		db	ARG_JUSTREG				;OP_ECX
-		db	0ffh					;OP_SHOSIZ
-		db	ARG_IMMED				;OP_1
-		db	ARG_IMMED				;OP_3
-		db	ARG_JUSTREG				;OP_DX
-		db	ARG_JUSTREG				;OP_CL
-		db	ARG_WEIRDREG				;OP_ST
-		db	ARG_WEIRDREG				;OP_CS
-		db	ARG_WEIRDREG				;OP_DS
-		db	ARG_WEIRDREG				;OP_ES
-		db	ARG_WEIRDREG				;OP_FS
-		db	ARG_WEIRDREG				;OP_GS
-		db	ARG_WEIRDREG				;OP_SS
+		db ARG_DEREF				; 0 OP_M64
+		db ARG_DEREF				; 1 OP_MFLOAT
+		db ARG_DEREF				; 2 OP_MDOUBLE
+		db ARG_DEREF				; 3 OP_M80
+		db ARG_DEREF				; 4 OP_MXX
+		db ARG_DEREF				; 5 OP_FARMEM
+		db ARG_FARADDR				; 6 OP_FARIMM
+		db ARG_IMMED				; 7 OP_REL8
+		db ARG_IMMED				; 8 OP_REL1632
+		db ARG_WEIRDREG				; 9 OP_1CHK
+		db ARG_WEIRDREG				;10 OP_STI
+		db ARG_WEIRDREG				;11 OP_CR
+		db ARG_WEIRDREG				;12 OP_DR
+		db ARG_WEIRDREG				;13 OP_TR
+		db ARG_WEIRDREG				;14 OP_SEGREG
+		db ARG_IMMED				;15 OP_IMMS8
+		db ARG_IMMED				;16 OP_IMM8
+		db ARG_WEIRDREG				;17 OP_MMX
+		db 0ffh						;18 OP_SHOSIZ
 
-;	Jump table for operand types.
+		db ARG_IMMED				;OP_1
+		db ARG_IMMED				;OP_3
+		db ARG_JUSTREG				;OP_DX
+		db ARG_JUSTREG				;OP_CL
+		db ARG_WEIRDREG				;OP_ST
+		db ARG_WEIRDREG				;OP_CS
+		db ARG_WEIRDREG				;OP_DS
+		db ARG_WEIRDREG				;OP_ES
+		db ARG_WEIRDREG				;OP_FS
+		db ARG_WEIRDREG				;OP_GS
+		db ARG_WEIRDREG				;OP_SS
 
-asm_jmp1	dw	ao04,ao01,ao01,ao01	;OP_IMM, OP_RM, OP_M, OP_R_MOD
-		dw	ao05,ao02,ao03,ao06	;OP_MOFFS, OP_R, OP_R_ADD, OP_AX
+;--- special ops DX, CL, ST, CS, DS, ES, FS, GS, SS
+;--- entry required if ao48 is set above
 
-		dw	ao17,ao17,ao17		;OP_M64, OP_MFLOAT, OP_MDOUBLE
-		dw	ao17,ao17,ao17		;OP_M80, OP_MXX, OP_FARMEM
-		dw	ao21,ao23,ao25		;OP_FARP, OP_REL8, OP_REL1632
-		dw	ao29,ao30,ao31		;OP_1CHK, OP_STI, OP_CR
-		dw	ao34,ao35,ao39		;OP_DR, OP_TR, OP_SEGREG
-		dw	ao41,ao42,ao43m		;OP_IMMS8, OP_IMM8, OP_ECX
-		dw	ao44,ao46,ao47		;OP_SHOSIZ, OP_1, OP_3
-		dw	ao48,ao48,ao48		;OP_DX, OP_CL, OP_ST
-		dw	ao48,ao48,ao48		;OP_CS, OP_DS, OP_ES
-		dw	ao48,ao48,ao48		;OP_FS, OP_GS, OP_SS
+asm_regnum	db 10,1,30				;DX, CL, ST
+			db 25,27,24,28,29,26	;CS, DS, ES, FS, GS, SS
 
-asm_regnum	db	10,1,30			;DX, CL, ST
-		db	25,27,24,28,29,26	;CS, DS, ES, FS, GS, SS
+;--- sizes for OP_M64, OP_MFLOAT, OP_MDOUBLE, OP_M80, OP_MXX, OP_FARMEM
+asm_siznum	db 5, 6, 7, 8		;qword, float, double, tbyte
+			db -1, 12			;none, far
 
-asm_siznum	db	5, 6, 7, 8		;qword, float, double, tbyte
-		db	-1, 12			;none, far
+;--- size qualifier
+;--- 1 BY=BYTE ptr
+;--- 2 WO=WORD ptr
+;--- 3 unused
+;--- 4 DW=DWORD ptr
+;--- 5 QW=QWORD ptr
+;--- 6 FL=FLOAT ptr (REAL4)
+;--- 7 DO=DOUBLE ptr (REAL8)
+;--- 8 TB=TBYTE ptr (REAL10)
+;--- 9 SH=SHORT 
+;--- 10 LO=LONG
+;--- 11 NE=NEAR ptr
+;--- 12 FA=FAR ptr
 
-aa00:	jmp	cmd3		;done with this command
+SIZ_BYTE	equ 1
+SIZ_WORD	equ 2
+SIZ_DWORD	equ 4
+SIZ_QWORD	equ 5
 
-aa:	mov	word [errret],aa01
-	cmp	al,CR
-	je	aa01		;if end of line
-	mov	bx,[reg_cs]	;default segment to use
+sizetcnam	db 'BY','WO','WO','DW','QW','FL','DO','TB','SH','LO','NE','FA'
+
+;--- write byte in AL to BX/[E]DX, then increment [E]DX
+
+writeasm proc
+	call writemem
+if PM
+	sizeprf		;inc edx
+endif
+	inc dx
+	ret
+writeasm endp
+
+;--- write CX bytes from DS:SI to BX:[E]DX
+
+writeasmn proc
+	jcxz nowrite
+@@:
+	lodsb
+	call writeasm
+	loop @B
+nowrite:
+	ret
+writeasmn endp
+
+aa proc
+	mov [errret],offset aa01
+	cmp al,CR
+	je aa01			;if end of line
+	mov bx,[regs.rCS]	;default segment to use
 aa00a:
-	call	getaddr		;get address into bx:(e)dx
-	call	chkeol		;expect end of line here
-	mov	[a_addr],dx	;save the address
-%if PM    
-    cmp byte [machine],3
-    jb aa00_1
-    cpu 386
-    mov [a_addr],edx
-    cpu 8086
-aa00_1:
-%endif
-	mov	[a_addr+4],bx
+	call getaddr	;get address into bx:(e)dx
+	call chkeol		;expect end of line here
+if PM
+	sizeprf		;mov [a_addr+0],edx
+endif
+	mov [a_addr+0],dx	;save the address
+	mov word ptr [a_addr+4],bx
 
-;	Begin loop over input lines.
+;--- Begin loop over input lines.
 
 aa01:
-	mov	sp,[savesp]	;restore the stack (this implies no "ret")
-	mov	di,line_out
-	mov	ax,[a_addr+4]
+	mov sp,[savesp]	;restore the stack (this implies no "ret")
+	mov di,offset line_out
+	mov ax,[a_addr+4]
 	call hexword
-	mov	al,':'
+	mov al,':'
 	stosb
-%if PM    
-	call ispm
-    jnz aa01_1
-    cmp byte [machine],3
-    jb aa01_1
-    mov ax,[a_addr+4]
-    call getattrhigh	;set Z flag
-    mov [bCSAttr],ah
-    jz aa01_1
-    mov ax,[a_addr+2]
-	call hexword
-aa01_1:   
-%endif
-	mov	ax,[a_addr+0]
-	call hexword
-	mov	al,' '
+	mov [asm_mn_flags],0
+	mov bp,offset hexword
+if PM
+	mov bx,[a_addr+4]
+	call getselattr
+	mov [bCSAttr],al
+	jz @F
+	mov bp,offset hexdword
+;	mov [asm_mn_flags],AMF_D32
+	db 66h	;mov eax,[a_addr]
+@@:
+endif
+	mov ax,[a_addr+0]
+	call bp
+	mov al,' '
 	stosb
 	call getline00
-	cmp	al,CR
-	je	aa00		;if done
-	cmp	al,';'
-	je	aa01		;if comment
-	mov	byte [asm_mn_flags],0
-	mov	word [aa_saved_prefix],0 ;clear aa_saved_prefix and aa_seg_pre
+	cmp al,CR
+	je aa_exit	;if done
+	cmp al,';'
+	je aa01		;if comment
+	mov word ptr [aa_saved_prefix],0 ;clear aa_saved_prefix and aa_seg_pre
 
-;	Get mnemonic and look it up.
+;--- Get mnemonic and look it up.
 
-aa02:	mov	di,line_out	;return here after LOCK/REP/SEG prefix
-	push	si		;save position of mnemonic
-aa03:	cmp	al,'a'
-	jb	aa04		;if not lower case letter
-	cmp	al,'z'
-	ja	aa04
-	and	al,TOUPPER	;convert to upper case
-aa04:	stosb
-	lodsb
-	cmp	al,CR
-	je	aa05		;if end of mnemonic
-	cmp	al,' '
-	je	aa05
-	cmp	al,TAB
-	jne	aa03
-aa05:	call	skipwh0		;skip to next field
-	dec	si
-	push	si		;save position in input line
-	mov	al,0
+aa02:
+	mov di,offset line_out	;return here after LOCK/REP/SEG prefix
+	push si			;save position of mnemonic
+aa03:
+	cmp al,'a'
+	jb @F			;if not lower case letter
+	cmp al,'z'
+	ja @F
+	and al,TOUPPER	;convert to upper case
+@@:
 	stosb
-	mov	bx,mnlist
-	mov	dx,end_mnlist
-aa06:	mov	si,bx		;begin bisection loop looking for mnemonic
-	add	si,dx
-	rcr	si,1
-aa07:	lodsb			;skip to end of string
-	cmp	al,0
-	jne	aa07		;if not end of string
-	cmp	si,dx
-	jb	aa09		;if not end of table
-aa08:	dec	si
-	cmp	si,bx
-	je	aa09		;if beginning of table
-	cmp	byte [si-1],0
-	jne	aa08
-aa09:	push	si		;compare op codes
-	inc	si		;skip over the data word
-	inc	si
-	push	di
-	mov	cx,line_out
-	sub	di,cx
-	xchg	cx,di
-	repe	cmpsb
-	pop	di
-	pop	si
-	je	aa14		;if found it
-	jg	aa11		;if (di) < (si)
-aa10:	lodsb
-	cmp	al,0
-	jne	aa10		;skip to end of string
-	mov	bx,si
-	jmp	aa12
-aa11:	mov	dx,si
-aa12:	cmp	bx,dx
-	jne	aa06		;if more to search
-aa13:	pop	si		;end of mnemonic
-aa13a:	pop	si		;beginning of mnemonic
-aa13b:	jmp	error		;complain
-
-;	We found the mnemonic.
-
-aa14:	lodsb			;get significant byte of address
-	mov	ah,al		;multiply by 255
-	neg	al
-	xchg	ax,bx
 	lodsb
-	mov	ah,0
-	add	bx,ax
-	lea	si,[asmtab+bx-512]
+	cmp al,CR
+	je @F			;if end of mnemonic
+	cmp al,';'
+	je @F
+	cmp al,' '
+	je @F
+	cmp al,TAB
+	jne aa03
+@@:
+	or byte ptr [di-1],80h	;set highest bit of last char of mnemonic
+	call skipwh0	;skip to next field
+	dec si
+	push si			;save position in input line
+;	mov al,0
+;	stosb
 
-;	Now si points to the spot in asmtab corresponding to this mnemonic.
-;	The format of the assembler table is as follows.
-;	First, there is optionally one of the following bytes:
-;		ASM_DB		db mnemonic
-;		ASM_DW		dw mnemonic
-;		ASM_DD		dd mnemonic
-;		ASM_WAIT	the mnemonic should start with a wait
-;				instruction.
-;		ASM_D32		This is a 32 bit instruction.
-;		ASM_AAX		Special for AAM and AAD instructions:
-;				put 0ah in for a default operand.
-;		ASM_SEG		This is a segment prefix.
-;		ASM_LOCKREP	This is a LOCK or REP... prefix.
-;
-;	Then, in most cases, this is followed by one or more of the following
-;	sequences, indicating an instruction variant.
-;		ASM_LOCKABLE	(optional) indicates that this instruction can
-;				follow a LOCK prefix.
-;		ASM_MACHx	Indicates the first machine on which this
-;				instruction appeared.
-;		[word]		This is a 16-bit integer, most significant byte
-;				first, giving ASMMOD * a + b, where b is an
-;				index into the array opindex (indicating the
-;				key, or type of operand list), and a is as
-;				follows:
-;			0-255	  The (one-byte) instruction.
-;			256-511	  The lower 8 bits give the second byte of
-;				  a two-byte instruction beginning with 0fh.
-;			512-575	  Bits 2-0 say which floating point instruction
-;				  this is (0d8h-0dfh), and 5-3 give the /r
-;				  field.
-;			576-...	  (a-576)/8 is the index in the array agroups
-;				  (which gives the real value of a), and the
-;				  low-order 3 bits gives the /r field.
-;
-;		[byte]		This gives the second byte of a floating
-;				instruction if 0d8h <= a <= 0dfh.
-;
-;	Following these is an ASM_END byte.
-;
-;	Exceptions:
-;		ASM_SEG and ASM_LOCKREP are followed by just one byte, the
-;		prefix byte.
-;		ASM_DB, ASM_DW, and ASM_DD don't need to be followed by
-;		anything.
-;
+;--- now search mnemonic in list
 
-ASM_END		equ	0ffh
-ASM_DB		equ	0feh
-ASM_DW		equ	0fdh
-ASM_DD		equ	0fch
-ASM_ORG		equ	0fbh
-ASM_WAIT	equ	0fah
-ASM_D32		equ	0f9h
-ASM_AAX		equ	0f8h
-ASM_SEG		equ	0f7h
-ASM_LOCKREP	equ	0f6h
+	mov si,offset mnlist
+aa06:               ;<--- next mnemonic
+	mov bx,si
+	add si,2		;skip the 'asmtab' offset 
+	mov cx,si
+@@:
+	lodsb			;skip to end of string
+	and al,al
+	jns @B			;if not end of string
+	xchg cx,si
+	push cx
+	sub cx,si		;size of opcode in mnlist
+	mov di,offset line_out
+	repe cmpsb
+	pop si
+	je aa14			;if found it
+	cmp si,offset end_mnlist
+	jc aa06			;next mnemonic
+	pop si			;skip position in input line
+aa13a:
+	pop si			;skip position of mnemonic
+aa13b:
+	jmp cmd_error	;complain
+aa_exit:
+	jmp cmdloop		;done with this command
 
-ASM_LOCKABLE	equ	0f5h
-ASM_MACH6	equ	0f4h
-ASM_MACH0	equ	0eeh
+;--- We found the mnemonic.
 
-	cmp	byte [si],ASM_LOCKREP	;check for mnemonic flag byte
-	jb	aa15		;if none
-	lodsb			;get the prefix
-	sub	al,ASM_LOCKREP
-	je	aa18		;if LOCK or REP...
+aa14:
+	mov si,[bx]		;get the offset into asmtab
+	add si,offset asmtab
+
+;   Now si points to the spot in asmtab corresponding to this mnemonic.
+;   The format of the assembler table is as follows.
+;   First, there is optionally one of the following bytes:
+;       ASM_DB      db mnemonic
+;       ASM_DW      dw mnemonic
+;       ASM_DD      dd mnemonic
+;       ASM_WAIT    the mnemonic should start with a wait
+;                   instruction.
+;       ASM_D32     This is a 32 bit instruction variant.
+;       ASM_D16     This is a 16 bit instruction variant.
+;       ASM_AAX     Special for AAM and AAD instructions:
+;                   put 0ah in for a default operand.
+;       ASM_SEG     This is a segment prefix.
+;       ASM_LOCKREP This is a LOCK or REP... prefix.
+;
+;   Then, in most cases, this is followed by one or more of the following
+;   sequences, indicating an instruction variant.
+;   ASM_LOCKABLE (optional) indicates that this instruction can
+;                follow a LOCK prefix.
+;   ASM_MACHx    (optional) indicates the first machine on which this
+;                instruction appeared.
+;   [word]       This is a 16-bit integer, most significant byte
+;                first, giving ASMMOD * a + b, where b is an
+;                index into the array opindex (indicating the
+;                key, or type of operand list), and a is as
+;                follows:
+;                0-255     The (one-byte) instruction.
+;                256-511   The lower 8 bits give the second byte of
+;                          a two-byte instruction beginning with 0fh.
+;                512-575   Bits 2-0 say which floating point instruction
+;                          this is (0d8h-0dfh), and 5-3 give the /r
+;                          field.
+;                576-...   (a-576)/8 is the index in the array agroups
+;                          (which gives the real value of a), and the
+;                          low-order 3 bits gives the /r field.
+;
+;   [byte]       This gives the second byte of a floating
+;                instruction if 0d8h <= a <= 0dfh.
+;
+;   Following these is an ASM_END byte.
+;
+;   Exceptions:
+;       ASM_SEG and ASM_LOCKREP are followed by just one byte, the
+;       prefix byte.
+;       ASM_DB, ASM_DW, and ASM_DD don't need to be followed by
+;       anything.
+
+ASM_END		equ 0ffh
+ASM_DB		equ 0feh
+ASM_DW		equ 0fdh
+ASM_DD		equ 0fch
+ASM_ORG		equ 0fbh
+ASM_WAIT	equ 0fah
+ASM_D32		equ 0f9h
+ASM_D16		equ 0f8h
+ASM_AAX		equ 0f7h
+ASM_SEG		equ 0f6h
+ASM_LOCKREP	equ 0f5h
+ASM_LOCKABLE equ 0f4h
+ASM_MACH6	equ 0f3h
+ASM_MACH5	equ 0f2h
+ASM_MACH4	equ 0f1h
+ASM_MACH3	equ 0f0h
+ASM_MACH2	equ 0efh
+ASM_MACH1	equ 0eeh
+ASM_MACH0	equ 0edh
+
+	cmp byte ptr [si],ASM_LOCKREP	;check for mnemonic flag byte
+	jb aa15						;if none
+	lodsb						;get the prefix
+	sub al,ASM_LOCKREP			;convert to 0-9
+	je aa18						;if LOCK or REP...
 	cbw
-	dec	ax
-	jz	aa17		;if segment prefix
-	dec	ax
-	jz	aa16		;if aad or aam
-	cmp	al,3
-	jae	aa20		;if ASM_ORG or ASM_DD or ASM_DW or ASM_DB
-	or	[asm_mn_flags],al ;save AMF_D32 or AMF_WAIT
-    test al,AMF_D32
-    jz aa15
-    or  byte [asm_mn_flags],AMF_D32SET
-aa15:	jmp	ab01		;now process the arguments
+	dec ax
+	jz aa17						;if segment prefix (ASM_SEG)
+	dec ax
+	jz aa16						;if aad or aam (ASM_AAX)
+	dec ax
+	jz aa15_1					;if ASM_D16
+	cmp al,3
+	jae aa20					;if ASM_ORG or ASM_DD or ASM_DW or ASM_DB
+	or [asm_mn_flags],al		;save AMF_D32 or AMF_WAIT (1 or 2)
+aa15:
+	jmp ab01					;now process the arguments
+aa15_1:
+	or [asm_mn_flags],AMF_D16
+	inc si						;skip the ASM_D32 byte
+	jmp ab01					;now process the arguments
 
-aa16:	jmp	ab00
+aa16:
+	jmp ab00
 
-;	segment prefix
+;--- segment prefix
 
-aa17:	lodsb			;get prefix value
-	mov	[aa_seg_pre],al
-	or	byte [asm_mn_flags],AMF_MSEG
-	pop	si
-	pop	ax
+aa17:
+	lodsb			;get prefix value
+	mov [aa_seg_pre],al
+	or [asm_mn_flags],AMF_MSEG
+	pop si
+	pop ax
 	lodsb
-	cmp	al,CR
-	je	aa13a		;if end of line ( ==> error)
-	cmp	al,';'
-	je	aa13a		;if end of line (comment) ( ==> error)
-	jmp	aa02		;back for more
+	cmp al,CR
+	je aa13a		;if end of line ( ==> error)
+	cmp al,';'
+	je aa13a		;if end of line (comment) ( ==> error)
+	jmp aa02		;back for more
 
-;	LOCK or REP prefix
+;--- LOCK or REP prefix
 
-aa18:	lodsb			;get prefix value
-	xchg	al,[aa_saved_prefix]
-	cmp	al,0
-	jnz	aa13a		;if there already was a saved prefix
-	pop	si
-	pop	ax
+aa18:
+	lodsb			;get prefix value
+	xchg al,[aa_saved_prefix]
+	cmp al,0
+	jnz aa13a		;if there already was a saved prefix
+	pop si
+	pop ax
 	lodsb
-	cmp	al,CR
-	je	aa19		;if end of line
-	cmp	al,';'
-	je	aa19		;if end of line (comment)
-	jmp	aa02		;back for more
-
-aa19:	mov	al,[aa_saved_prefix]	;just a prefix, nothing else
-	mov	di,line_out
+	cmp al,CR
+	je @F			;if end of line
+	cmp al,';'
+	je @F			;if end of line (comment)
+	jmp aa02		;back for more
+@@:
+	mov al,[aa_saved_prefix]	;just a prefix, nothing else
+	mov di,offset line_out
 	stosb
-	jmp	aa27
+	jmp aa27
 
-;	Pseudo ops (org or db/dw/dd).
+;--- Pseudo ops (org or db/dw/dd).
 
-aa20:	cmp	word [aa_saved_prefix],0
-	jnz	aa13a		;if there was a prefix or a segment
-	pop	si		;get position in input line
-	sub	al,3		;AX=0 if org, 1 if dd, 2 if dw, 3 if db.
-	jnz	aa20m		;if not ORG
+aa20:
+	cmp word ptr [aa_saved_prefix],0
+	jnz aa13a		;if there was a prefix or a segment: error
+	pop si			;get position in input line
+	sub al,3		;AX=0 if org, 1 if dd, 2 if dw, 3 if db.
+	jnz aa20m		;if not ORG
 
-;	Process ORG pseudo op.
+;--- Process ORG pseudo op.
 
 	call skipwhite
-	cmp	al,CR
-	je	aa20a		;if nothing
-	mov	bx,[a_addr+4]	;default segment
-	jmp	aa00a		;go to top
-aa20a:	jmp	aa01		;get next line
+	cmp al,CR
+	je @F				;if nothing
+	mov bx,[a_addr+4]	;default segment
+	jmp aa00a			;go to top
+@@:
+	jmp aa01			;get next line
 
-;	Data instructions (DB/DW/DD).
+;--- Data instructions (DB/DW/DD).
 
-aa20m:	mov	di,line_out	;put the bytes here when we get them
-	xchg	ax,bx		;mov bx,ax
-	mov	al,[aadbsiz+bx]	;move maximum size
-	mov	[aadbsiz],al
-	shl	bx,1
-	mov	ax,[aadbsto+bx]	;move address of storage routine
-	mov	[aadbsto],ax
+aa20m:
+	mov di,offset line_out		;put the bytes here when we get them
+	xchg ax,bx			;mov bx,ax
+	mov al,[aadbsiz+bx]	;move maximum size
+	mov [aadbsiz],al
+	shl bx,1
+	mov ax,[aadbsto+bx]	;move address of storage routine
+	mov [aadbsto],ax
 	call skipwhite
-	cmp	al,CR
-	je	aa27		;if end of line
+	cmp al,CR
+	je aa27				;if end of line
 
-aa21:	cmp	al,'"'
-	je	aa22		;if string
-	cmp	al,"'"
-	je	aa22		;if string
-	call	aageti		;get a numerical value into dx:bx, size into cl
-	cmp	cl,[aadbsiz]
-	jg	aa24		;if overflow
-	xchg	ax,bx
-	call	[aadbsto]	;store the value
-	cmp	di,real_end
-	ja	aa24		;if output line overflow
-	xchg	ax,bx
-	jmp	aa26		;done with this one
+aa21:
+	cmp al,'"'
+	je aa22				;if string
+	cmp al,"'"
+	je aa22				;if string
+	call aageti			;get a numerical value into dx:bx, size into cl
+	cmp cl,[aadbsiz]
+	jg aa24				;if overflow
+	xchg ax,bx
+	call [aadbsto]		;store the value
+	cmp di,offset real_end
+	ja aa24				;if output line overflow
+	xchg ax,bx
+	jmp aa26			;done with this one
 
-aa22:	mov	ah,al
-aa23:	lodsb
-	cmp	al,CR
-	je	aa24		;if end of line
-	cmp	al,ah
-	je	aa25		;if end of string
+aa22:
+	mov ah,al
+aa23:
+	lodsb
+	cmp al,CR
+	je aa24			;if end of line
+	cmp al,ah
+	je aa25			;if end of string
 	stosb
-	cmp	di,real_end
-	jbe	aa23		;if output line not overflowing
-aa24:	jmp	aa13b		;error
-aa25:	lodsb
-aa26:	call	skipcomm0
-	cmp	al,CR
-	jne	aa21		;if not end of line
+	cmp di,offset real_end
+	jbe aa23		;if output line not overflowing
+aa24:
+	jmp aa13b		;error
+aa25:
+	lodsb
+aa26:
+	call skipcomm0
+	cmp al,CR
+	jne aa21		;if not end of line
 
-;	End of line.  Copy it over.
+;--- End of line.  Copy it to debuggee's memory
 
-aa27:	mov	si,line_out
-	mov	cx,di
-	sub	cx,si
-	mov	di,[a_addr+0]
-	mov	es,[a_addr+4]
-	rep	movsb		;copy it
-	push ds
-	pop	es
-	mov	[a_addr],di
-	jmp	aa01
+aa27:
+	mov si,offset line_out
+	mov bx,[a_addr+4]
+if PM
+	sizeprf		;mov edx, [a_addr+0]
+endif
+	mov dx,[a_addr+0]
+@@:
+	lodsb
+	call writeasm
+	cmp si,di
+	jc @B
+if PM
+	sizeprf		;mov [a_addr+0],edx
+endif
+	mov [a_addr+0],dx
+	jmp aa01
 
-;	Routines to store a byte/word/dword.
+aadbsiz		db 0,4,2,1		;table for max size of db operand
+aadbsto		dw 0,aa28,aa29,aa30;table for routine to store a number
 
-aa28:	stosw			;store a dword value
-	xchg	ax,dx
+;--- Routines to store a byte/word/dword.
+
+aa28:
+	stosw			;store a dword value
+	xchg ax,dx
 	stosw
-	xchg	ax,dx
+	xchg ax,dx
 	ret
 
-aa29:	stosw			;store a word value
+aa29:
+	stosw			;store a word value
 	ret
 
-aa30:	stosb			;store a byte value
+aa30:
+	stosb			;store a byte value
 	ret
 
-;	Here we process the AAD and AAM instructions.  They are special
-;	in that they may take a one-byte argument, or none (in which case
-;	the argument defaults to 0ah = ten).
+;   Here we process the AAD and AAM instructions.  They are special
+;   in that they may take a one-byte argument, or none (in which case
+;   the argument defaults to 0ah = ten).
 
-ab00:	mov	[mneminfo],si	;save this address
-	pop	si
+ab00:
+	mov [mneminfo],si	;save this address
+	pop si
 	lodsb
-	cmp	al,CR
-	je	ab00a		;if end of line
-	cmp	al,';'
-	jne	ab01b		;if not end of line
-ab00a:	mov	si,aam_args	;fake a 0ah argument
-	jmp	ab01a
+	cmp al,CR
+	je ab00a		;if end of line
+	cmp al,';'
+	jne ab01b		;if not end of line
+ab00a:
+	mov si,offset aam_args	;fake a 0ah argument
+	jmp ab01a
 
-;	Process normal instructions.
+;--- Process normal instructions.
 
-;	First we parse each argument into a 12-byte data block, stored
-;	consecutively at line_out, line_out+12, etc.
-;	This is stored as follows.
+;   First we parse each argument into a 12-byte data block, stored
+;   consecutively at line_out, line_out+12, etc.
+;   This is stored as follows.
 
-;	[di]	Flags (ARG_DEREF, etc.)
-;	[di+1]	Unused
-;	[di+2]	Size argument, if any (1=byte, 2=word, 3=(unused), 4=dword,
-;		5=qword, 6=float, 7=double, 8=tbyte, 9=short, 10=long, 11=near,
-;		12=far).
-;	[di+3]	Size of MOD R/M displacement
-;	[di+4]	First register, or MOD R/M byte
-;	[di+5]	Second register or index register or SIB byte
-;	[di+6]	Index factor
-;	[di+7]	Sizes of numbers are or-ed here
-;	[di+8]	(dword) number
+;   [di]    Flags (ARG_DEREF, etc.)
+;   [di+1]  Unused
+;   [di+2]  Size argument, if any (1=byte, 2=word, 3=(unused), 4=dword,
+;       5=qword, 6=float, 7=double, 8=tbyte, 9=short, 10=long, 11=near,
+;       12=far).
+;   [di+3]  Size of MOD R/M displacement
+;   [di+4]  First register, or MOD R/M byte, or num of additional bytes
+;   [di+5]  Second register or index register or SIB byte
+;   [di+6]  Index factor
+;   [di+7]  Sizes of numbers are or-ed here
+;   [di+8]  (dword) number
 
-;	For arguments of the form xxxx:yyyyyyyy, xxxx is stored in [di+5],
-;	and yyyyyyyy in [di+8].  The number of bytes in yyyyyyyy is stored in
-;	opaddr, 2 is stored in [di+4], and di is stored in xxaddr.
+;   For arguments of the form xxxx:yyyyyyyy, xxxx is stored in <num2>,
+;   and yyyyyyyy in <num>.  The number of bytes in yyyyyyyy is stored in
+;   opaddr, 2 is stored in <numadd>, and di is stored in xxaddr.
 
-ab01:	mov	[mneminfo],si	;save this address
-	pop	si		;get position in line
-ab01a:	lodsb
-ab01b:	mov	di,line_out
+OPRND struc
+flags	db ?	;+0
+		db ?   
+sizearg	db ?	;+2
+sizedis	db ?	;+3
+union
+reg1	db ?	;+4
+numadd	db ?	;+4 (additional bytes, stored at num2 (up to 4)
+ends
+union
+struct
+reg2	db ?	;+5
+index	db ?	;+6
+ends
+num2	dw ?	;+5
+ends
+orednum	db ?	;+7
+num		dd ?	;+8
+OPRND ends
 
-;	Begin loop over operands.
+ab01:
+	mov [mneminfo],si	;save this address
+	pop si				;get position in line
+ab01a:
+	lodsb
+ab01b:
+	mov di,offset line_out
 
-ab02:	cmp	al,CR
-	je	ab03		;if end of line
-	cmp	al,';'
-	jne	ab04		;if not end of line
-ab03:	jmp	ab99		;to next phase
+;--- Begin loop over operands.
 
-ab04:	push	di		;clear out the next storage area
-	mov	cx,6
-	xor	ax,ax
-	rep	stosw
-	pop	di
+ab02:               ;<--- next operand
+	cmp al,CR
+	je ab03			;if end of line
+	cmp al,';'
+	jne ab04		;if not end of line
+ab03:
+	jmp ab99		;to next phase
 
-;	Small loop over "BYTE PTR" and segment prefixes.
+ab04:
+	push di			;clear out the current OPRND storage area
+	mov cx,sizeof OPRND / 2
+	xor ax,ax
+	rep stosw
+	pop di
 
-ab05:	dec	si
-	mov	ax,[si]
-	and	ax,TOUPPER_W
-	cmp	byte [di+2],0
-	jne	ab07		;if already have "BYTE PTR"
-	push	di
-	mov	di,sizetcnam
-	mov	cx,12
-	repne	scasw
-	pop	di
-	jne	ab07		;if not found
-	or	cx,cx
-	jnz	ab06		;if not 'FA'
-	mov	al,[si+2]
-	and	al,TOUPPER
-	cmp	al,'R'
-	jne	ab09		;if not 'FAR' (could be hexadecimal)
-ab06:
-	sub	cl,12
-	neg	cl		;convert to 1, ..., 12
-	mov	[di+2],cl
-	call	skipalpha
-	call	skipwh0
-	mov	ah,[si]
-	and	ax,TOUPPER_W
-	cmp	ax,'FA'
-	jne	ab06a		;if not 'FA'
-	mov	al,[si+1]
-	and	al,TOUPPER
-	cmp	al,'R'
-	jne	ab05		;if not 'FAR'
-	mov	byte [di+2],12	;set 'FAR'
-	or	byte [asm_mn_flags],AMF_D32 | AMF_D32SET
-	call	skipalpha
-	call	skipwh0
-	mov	ah,[si]
-	and	ax,TOUPPER_W
-ab06a:	cmp	ax,'PT'
-	jne	ab05		;if not 'PTR'
-	call	skipalpha
-	call	skipwh0
-	jmp	ab05
+;--- Small loop over "BYTE PTR" and segment prefixes.
 
-ab07:	cmp	byte [aa_seg_pre],0
-	jne	ab09		;if we already have a segment prefix
-	push	di
-	mov	di,segrgnam
-	mov	cx,6
-	repne	scasw
-	pop	di
-	jne	ab09		;if not found
-	push	si		;save si in case there's no colon
+ab05:
+	dec si
+	mov ax,[si]
+	and ax,TOUPPER_W
+	cmp [di].OPRND.sizearg,0
+	jne ab07		;if already have a size qualifier ("BYTE PTR",...)
+	push di
+	mov di,offset sizetcnam
+	mov cx,sizeof sizetcnam / 2
+	repne scasw
+	pop di
+	jne ab07		;if not found
+	or cx,cx
+	jnz @F			;if not 'FA'
+	mov al,[si+2]
+	and al,TOUPPER
+	cmp al,'R'
+	jne ab09		;if not 'FAR' (could be hexadecimal)
+@@:
+	sub cl,sizeof sizetcnam / 2
+	neg cl			;convert to 1, ..., 12
+	mov [di].OPRND.sizearg,cl
+	call skipalpha	;go to next token
+	mov ah,[si]
+	and ax,TOUPPER_W
+	cmp ax,'TP'
+	jne ab05		;if not 'PTR'
+	call skipalpha	;go to next token
+	jmp ab05
+
+ab07:
+	cmp [aa_seg_pre],0
+	jne ab09		;if we already have a segment prefix
+	push di
+	mov di,offset segrgnam
+	mov cx,sizeof segrgnam / 2
+	repne scasw
+	pop di
+	jne ab09		;if not found
+	push si			;save si in case there's no colon
 	lodsw
 	call skipwhite
-	cmp	al,':'
-	jne	ab08		;if not followed by ':'
-	pop	ax		;discard saved si
+	cmp al,':'
+	jne ab08		;if not followed by ':'
+	pop ax			;discard saved si
 	call skipwhite	;skip it
-	mov	bx,prefixlist + 5
-	sub	bx,cx
-	mov	al,[bx]		;look up the prefix byte
-	mov	[aa_seg_pre],al	;save it away
-	jmp	ab05
+	mov bx,offset prefixlist + 5
+	sub bx,cx
+	mov al,[bx]		;look up the prefix byte
+	mov [aa_seg_pre],al	;save it away
+	jmp ab05
+ab08:
+	pop si
 
-ab08:	pop	si
+;--- Begin parsing main part of argument.
 
-;	Begin parsing main part of argument.
+;--- first check registers
 
-ab09:	push	di		;check for solo registers
-	mov	di,rgnam816
-	mov	cx,27
-	call	aagetreg
-	pop	di
-	jc	ab14		;if not a register
-	or	byte [di],ARG_JUSTREG
-	mov	[di+4],bl	;save register number
-	cmp	bl,24
-	jae	ab09a		;if it's not a normal register
-	xchg	ax,bx		;mov al,bl
-	mov	cl,3
-	shr	al,cl		;al = size:  0 -> byte, 1 -> word, 2 -> dword
-	add	al,-2
-	adc	al,3		;convert to 1, 2, 4 (respectively)
-	jmp	ab13
-
-ab09a:	xor	byte [di],ARG_JUSTREG + ARG_WEIRDREG
-	mov	al,2		;register size
-	cmp	bl,30
-	ja	ab11		;if it's CR, DR, TR, or MM
-	je	ab09b		;if it's ST
-	cmp	bl,28
-	jb	ab13		;if it's a normal segment register
-	or	byte [asm_mn_flags],AMF_FSGS	;flag it
-	jmp	ab13
-
-ab09b:	cmp	byte [si],'('
-	jne	ab12		;if just plain ST
+ab09:
+	push di			;check for solo registers
+	mov di,offset rgnam816
+	mov cx,N_ALLREGS;8+16bit regs, segment regs, special regs
+	call aagetreg
+	pop di
+	jc ab14			;if not a register
+	or [di].OPRND.flags, ARG_JUSTREG
+	mov [di].OPRND.reg1,bl	;save register number
+	cmp bl,24		;0-23 = AL-DH, AX-DI, EAX-EDI
+	jae @F			;if it's not a normal register
+	xchg ax,bx		;mov al,bl
+	mov cl,3
+	shr al,cl		;al = size:  0 -> byte, 1 -> word, 2 -> dword
+	add al,-2
+	adc al,3		;convert to 1, 2, 4 (respectively)
+	jmp ab13
+@@:
+	xor [di].OPRND.flags, ARG_JUSTREG + ARG_WEIRDREG
+	mov al,SIZ_WORD	;register size
+	cmp bl,REG_ST	;24-29=segment registers
+	ja ab11			;if it's MM, CR, DR or TR
+	je @F			;if it's ST
+	cmp bl,28
+	jb ab13			;if it's a normal segment register (DS,ES,SS,CS)
+	or [asm_mn_flags],AMF_FSGS	;flag it
+	jmp ab13
+@@:
+	cmp byte ptr [si],'('
+	jne ab12		;if just plain ST
 	lodsb
 	lodsb
-	sub	al,'0'
-	cmp	al,7
-	ja	ab10		;if not 0..7
-	mov	[di+5],al	;save the number
+	sub al,'0'
+	cmp al,7
+	ja ab10			;if not 0..7
+	mov [di].OPRND.reg2,al	;save the number
 	lodsb
-	cmp	al,')'
-	je	ab12		;if not error
-ab10:	jmp	aa13b		;error
+	cmp al,')'
+	je ab12			;if not error
+ab10:
+	jmp aa13b		;error
 
-ab11:	lodsb			;other registers (CR, DR, TR, MM)
-	sub	al,'0'
-	cmp	al,7
-	ja	ab10		;if error
-	mov	[di+5],al	;save the number
-	mov	al,4		;register size
-	cmp	bl,31
-	jne	ab13		;if not MM register
-ab12:	mov	al,0
-ab13:	cmp	al,[di+2]	;compare with stated size
-	je	ab13a		;if same
-	xchg	al,[di+2]
-	cmp	al,0
-	jne	ab10		;if wrong size given
-ab13a:	jmp	ab44		;done with this operand
+;--- other registers 31-34 (MM, CR, DR, TR)
 
-;	It's not a register reference.  Try for a number.
+ab11:
+	lodsb
+	sub al,'0'
+	cmp al,7
+	ja ab10			;if error
+	mov [di].OPRND.reg2,al	;save the number
+	mov al,SIZ_DWORD;register size
+	cmp bl,REG_MM
+	jne ab13		;if not MM register
+	or [di].OPRND.flags, ARG_JUSTREG
+	mov al,SIZ_QWORD
+	jmp ab13
+ab12:
+	mov al,0		;size for ST regs
+ab13:
+	cmp al,[di].OPRND.sizearg	;compare with stated size
+	je @F			;if same
+	xchg al,[di].OPRND.sizearg
+	cmp al,0
+	jne ab10		;if wrong size given - error
+@@:
+	jmp ab44		;done with this operand
 
-ab14:	lodsb
-	call	aaifnum
-	jc	ab17		;it's not a number
-ab14a:	call	aageti		;get the number
-	mov	[di+7],cl
-	mov	[di+8],bx
-	mov	[di+10],dx
-	call	skipwh0
-	cmp	cl,2
-	jg	ab17		;if we can't have a colon here
-	cmp	al,':'
-	jne	ab17		;if not xxxx:yyyy
+;--- It's not a register reference.  Try for a number.
+
+ab14:
+	lodsb
+	call aaifnum
+	jc ab17			;it's not a number
+	call aageti		;get the number
+	mov [di].OPRND.orednum,cl
+	mov word ptr [di].OPRND.num+0,bx
+	mov word ptr [di].OPRND.num+2,dx
+	call skipwh0
+	cmp cl,2
+	jg ab17			;if we can't have a colon here
+	cmp al,':'
+	jne ab17		;if not xxxx:yyyy
 	call skipwhite
-	call	aageti
-	mov	cx,[di+8]
-	mov	[di+5],cx
-	mov	[di+8],bx
-	mov	[di+10],dx
-	or	byte [di],ARG_FARADDR
-	jmp	ab43		;done with this operand
+	call aageti
+	mov cx,word ptr [di].OPRND.num+0
+	mov [di].OPRND.num2,cx
+	mov word ptr [di].OPRND.num+0,bx
+	mov word ptr [di].OPRND.num+2,dx
+	or [di].OPRND.flags, ARG_FARADDR
+	jmp ab43		;done with this operand
 
-;	Check for [...].
+;--- Check for [...].
 
-ab15:	jmp	ab30		;do post-processing
+ab15:
+	jmp ab30		;do post-processing
 
-ab16:	call skipwhite
-ab17:	cmp	al,'['		;begin loop over sets of []
-	jne	ab15		;if not [
-	or	byte [di],ARG_DEREF ;set the flag
-ab18:	call skipwhite
-ab19:	cmp	al,']'		;begin loop within []
-	je	ab16		;if done
-
-;	Check for a register (within []).
-
-	dec	si
-	push	di
-	mov	di,rgnam16
-	mov	cx,8
-	call	aagetreg
-	pop	di
-	jc	ab25		;if not a register
-	cmp	bl,16
-	jae	ab20		;if 32-bit register
-	add	bl,8		;adjust 0..7 to 8..15
-	jmp	ab21
-ab20:	cmp	byte [di+5],0
-	jnz	ab21		;if we already have an index
+ab16:
 	call skipwhite
-	dec	si
-	cmp	al,'*'
-	jne	ab21		;if not followed by '*'
-	inc	si
-	mov	[di+5],bl	;save index register
+ab17:
+	cmp al,'['		;begin loop over sets of []
+	jne ab15		;if not [
+	or [di].OPRND.flags, ARG_DEREF ;set the flag
+ab18:
 	call skipwhite
-	call	aageti
-	call	aaconvindex
-	jmp	ab28		;ready for next part
+ab19:
+	cmp al,']'		;begin loop within []
+	je ab16			;if done
 
-ab21:	cmp	byte [di+4],0
-	jne	ab22		;if there's already a register
-	mov	byte [di+4],bl
-	jmp	ab23
-ab22:	cmp	byte [di+5],0
-	jne	ab24		;if too many registers
-	mov	byte [di+5],bl
-ab23:	call skipwhite
-	jmp	ab28		;ready for next part
+;--- Check for a register (within []).
 
-ab24:	jmp	aa13b		;error
-
-;	Try for a number (within []).
-
-ab25:	lodsb
-ab26:	call	aageti		;get a number (or flag an error)
-	call	skipwh0
-	cmp	al,'*'
-	je	ab27		;if it's an index factor
-	or	[di+7],cl
-	add	[di+8],bx
-	adc	[di+10],dx
-	jmp	ab28		;next part ...
-
-ab27:	call	aaconvindex
+	dec si
+	push di
+	mov di,offset rgnam16
+	mov cx,sizeof rgnam16 / 2
+	call aagetreg
+	pop di
+	jc ab25			;if not a register
+	cmp bl,16
+	jae @F			;if 32-bit register
+	add bl,8		;adjust 0..7 to 8..15
+	jmp ab21
+@@:
+	cmp [di].OPRND.reg2, 0
+	jnz ab21		;if we already have an index
 	call skipwhite
-	dec	si
-	push	di
-	mov	di,rgnam16
-	xor	cx,cx
-	call	aagetreg
-	pop	di
-	jc	ab24		;if error
-	cmp	byte [di+5],0
-	jne	ab24		;if there is already a register
-	mov	[di+5],bl
+	dec si
+	cmp al,'*'
+	jne ab21		;if not followed by '*'
+	inc si
+	mov [di].OPRND.reg2,bl	;save index register
+	call skipwhite
+	call aageti
+	call aaconvindex
+	jmp ab28		;ready for next part
+
+ab21:
+	cmp [di].OPRND.reg1,0
+	jne @F			;if there's already a register
+	mov [di].OPRND.reg1,bl
+	jmp ab23
+@@:
+	cmp [di].OPRND.reg2, 0
+	jne ab24		;if too many registers
+	mov [di].OPRND.reg2,bl
+ab23:
+	call skipwhite
+	jmp ab28		;ready for next part
+ab24:
+	jmp aa13b		;error
+
+;--- Try for a number (within []).
+
+ab25:
+	lodsb
+ab26:
+	call aageti		;get a number (or flag an error)
+	call skipwh0
+	cmp al,'*'
+	je ab27			;if it's an index factor
+	or [di].OPRND.orednum,cl
+	add word ptr [di].OPRND.num+0,bx
+	adc word ptr [di].OPRND.num+2,dx
+	jmp ab28		;next part ...
+
+ab27:
+	call aaconvindex
+	call skipwhite
+	dec si
+	push di
+	mov di,offset rgnam16
+	xor cx,cx
+	call aagetreg
+	pop di
+	jc ab24			;if error
+	cmp [di].OPRND.reg2, 0
+	jne ab24		;if there is already a register
+	mov [di].OPRND.reg2, bl
 	call skipwhite
 
-;	Ready for the next term within [].
+;--- Ready for the next term within [].
 
-ab28:	cmp	al,'-'
-	je	ab26		;if a (negative) number is next
-	cmp	al,'+'
-	jne	ab29		;if no next term (presumably)
-	jmp	ab18
-ab29:	jmp	ab19		;back for more
+ab28:
+	cmp al,'-'
+	je ab26			;if a (negative) number is next
+	cmp al,'+'
+	jne @F			;if no next term (presumably)
+	jmp ab18
+@@:
+	jmp ab19		;back for more
 
-;	Post-processing for complicated arguments.
+;--- Post-processing for complicated arguments.
 
-ab30:	cmp	word [di+4],0
-	jnz	ab32		;if registers were given ( ==> create MOD R/M)
-	cmp	byte [di+7],0
-	jz	ab31		;if nothing was given ( ==> error)
-	cmp	byte [di],0
-	jnz	ab30b		;if it was not immediate
-	or	byte [di],ARG_IMMED
-ab30a:	jmp	ab43		;done with this argument
-ab30b:	mov	al,2		;size of the displacement
-	test	byte [di+7],4
-	jz	ab30c		;if not 32-bit displacement
-	inc	ax
-	inc	ax
-	or	byte [asm_mn_flags],AMF_A32	;32-bit addressing
-ab30c:	
-	or  byte [asm_mn_flags],AMF_A32SET
-	mov	byte [di+3],al	;save displacement size
-	jmp	ab30a		;done with this argument
-ab31:	jmp	aa13b		;flag an error
+ab30:
+	cmp word ptr [di].OPRND.reg1,0	;check both reg1+reg2
+	jnz ab32		;if registers were given ( ==> create MOD R/M)
+	cmp [di].OPRND.orednum,0
+	jz ab31			;if nothing was given ( ==> error)
+	cmp [di].OPRND.flags,0
+	jnz ab30b		;if it was not immediate
+	or [di].OPRND.flags,ARG_IMMED
+ab30a:
+	jmp ab43		;done with this argument
+ab30b:
+	or [asm_mn_flags],AMF_ADDR
+	mov al,2		;size of the displacement
+	test [di].OPRND.orednum,4
+	jz @F			;if not 32-bit displacement
+	inc ax
+	inc ax
+	or [asm_mn_flags],AMF_A32	;32-bit addressing
+@@:
+	mov [di].OPRND.sizedis,al	;save displacement size
+	jmp ab30a		;done with this argument
+ab31:
+	jmp aa13b		;flag an error
 
-;	Create the MOD R/M byte.
-;	(For disp-only or register, this will be done later as needed.)
+;   Create the MOD R/M byte.
+;   (For disp-only or register, this will be done later as needed.)
 
 ab32:
-	or	byte [di],ARG_MODRM
-	mov	al,[di+4]
-	or	al,[di+5]
-	test	al,16
-	jnz	ab34		;if 32-bit addressing
-	test	byte [di+7],4
-	jnz	ab34		;if 32-bit addressing
-    or byte [asm_mn_flags], AMF_A32SET
-	mov	ax,[di+4]
-	cmp	al,ah
-	ja	ab33		;make sure al >= ah
-	xchg	al,ah
-ab33:	push	di
-	mov	di,modrmtab
-	mov	cx,8
-	repne	scasw
-	pop	di
-	jne	ab31		;if not among the possibilities
-	mov	bx,206h		;max disp = 2 bytes; 6 ==> (non-existent) [bp]
-	jmp	ab39		;done (just about)
+	or [di].OPRND.flags, ARG_MODRM
+	mov al,[di].OPRND.reg1
+	or al,[di].OPRND.reg2
+	test al,16
+	jnz ab34		;if 32-bit addressing
+	test [di].OPRND.orednum,4
+	jnz ab34		;if 32-bit addressing
+;	or [asm_mn_flags], AMF_ADDR | AMF_A32
+	or [asm_mn_flags], AMF_ADDR
+	mov ax,word ptr [di].OPRND.reg1	;get reg1+reg2
+	cmp al,ah
+	ja @F			;make sure al >= ah
+	xchg al,ah
+@@:
+	push di
+	mov di,offset modrmtab
+	mov cx,8
+	repne scasw
+	pop di
+	jne ab31		;if not among the possibilities
+	mov bx,206h		;max disp = 2 bytes; 6 ==> (non-existent) [bp]
+	jmp ab39		;done (just about)
 
-ab34:	
-	or	byte [asm_mn_flags],AMF_A32 | AMF_A32SET	;32-bit addressing
-	mov	al,[di+4]
-	or	al,[di+6]
-	jnz	ab35		;if we can't optimize [EXX*1] to [EXX]
-	mov	ax,[di+4]
-	xchg	al,ah
-	mov	[di+4],ax
-ab35:	mov	bx,405h		;max disp = 4 bytes; 5 ==> (non-existent) [bp]
-	cmp	byte [di+5],0
-	jne	ab36		;if there's a SIB
-	mov	cl,[di+4]
-	cmp	cl,16
-	jl	ab31		;if wrong register type
-	and	cl,7
-	cmp	cl,4		;check for ESP
-	jne	ab39		;if not, then we're done (otherwise do SIB)
+;--- 32-bit addressing
 
-ab36:
-	or	byte [asm_mn_flags],AMF_SIB	;form SIB
-	mov	ch,[di+6]	;get SS bits
-	mov	cl,3
-	shl	ch,cl		;shift them halfway into place
-	mov	al,[di+5]	;index register
-	cmp	al,20
-	je	ab31		;if ESP ( ==> error)
-	cmp	al,0
-	jne	ab37		;if not zero
-	mov	al,20		;set it for index byte 4
-ab37:	cmp	al,16
-	jl	ab31		;if wrong register type
-	and	al,7
-	or	ch,al		;put it into the SIB
-	shl	ch,cl		;shift it into place
-	inc	cx		;R/M for SIB = 4
-	mov	al,[di+4]	;now get the low 3 bits
-	cmp	al,0
-	jne	ab38		;if there was a first register
-	or	ch,5
-	jmp	ab42		;MOD = 0, disp is 4 bytes
+ab34:
+	or [asm_mn_flags],AMF_A32 + AMF_ADDR
+	mov al,[di].OPRND.reg1
+	or al,[di].OPRND.index
+	jnz @F			;if we can't optimize [EXX*1] to [EXX]
+	mov ax,word ptr [di].OPRND.reg1	;get reg1+reg2
+	xchg al,ah
+	mov word ptr [di].OPRND.reg1,ax
+@@:
+	mov bx,405h		;max disp = 4 bytes; 5 ==> (non-existent) [bp]
+	cmp [di].OPRND.reg2,0
+	jne @F			;if there's a SIB
+	mov cl,[di].OPRND.reg1
+	cmp cl,16
+	jl ab31			;if wrong register type
+	and cl,7
+	cmp cl,4		;check for ESP
+	jne ab39		;if not, then we're done (otherwise do SIB)
+@@:
+	or [asm_mn_flags],AMF_SIB	;form SIB
+	mov ch,[di].OPRND.index		;get SS bits
+	mov cl,3
+	shl ch,cl				;shift them halfway into place
+	mov al,[di].OPRND.reg2	;index register
+	cmp al,20
+	je ab31			;if ESP ( ==> error)
+	cmp al,0
+	jne @F			;if not zero
+	mov al,20		;set it for index byte 4
+@@:
+	cmp al,16
+	jl ab31			;if wrong register type
+	and al,7
+	or ch,al		;put it into the SIB
+	shl ch,cl		;shift it into place
+	inc cx			;R/M for SIB = 4
+	mov al,[di].OPRND.reg1	;now get the low 3 bits
+	cmp al,0
+	jne @F			;if there was a first register
+	or ch,5
+	jmp ab42		;MOD = 0, disp is 4 bytes
+@@:
+	cmp al,16
+	jl ab45			;if wrong register type
+	and al,7		;first register
+	or ch,al		;put it into the SIB
+	cmp al,5
+	je ab40			;if it's EBP, then we don't recognize disp=0
+					;otherwise bl will be set to 0
 
-ab38:	cmp	al,16
-	jl	ab45		;if wrong register type
-	and	al,7		;first register
-	or	ch,al		;put it into the SIB
-	cmp	al,5
-	je	ab40		;if it's EBP, then we don't recognize disp=0
-				;otherwise bl will be set to 0
+;--- Find the size of the displacement.
 
-;	Find the size of the displacement.
+ab39:
+	cmp cl,bl
+	je ab40			;if it's [(E)BP], then disp=0 is still 1 byte
+	mov bl,0		;allow 0-byte disp
 
-ab39:	cmp	cl,bl
-	je	ab40		;if it's [(E)BP], then disp=0 is still 1 byte
-	mov	bl,0		;allow 0-byte disp
+ab40:
+	push cx
+	mov al,byte ptr [di].OPRND.num+0
+	mov cl,7
+	sar al,cl
+	pop cx
+	mov ah,byte ptr [di].OPRND.num+1
+	cmp al,ah
+	jne @F			;if it's bigger than 1 byte
+	cmp ax,word ptr [di].OPRND.num+2
+	jne @F			;ditto
+	mov bh,0		;no displacement
+	or bl,byte ptr [di].OPRND.num+0
+	jz ab42			;if disp = 0 and it's not (E)BP
+	inc bh			;disp = 1 byte
+	or cl,40h		;set MOD = 1
+	jmp ab42		;done
+@@:
+	or cl,80h		;set MOD = 2
+ab42:
+	mov [di].OPRND.sizedis,bh	;store displacement size
+	mov word ptr [di].OPRND.reg1, cx	;store MOD R/M and maybe SIB
 
-ab40:	push	cx
-	mov	al,[di+8]
-	mov	cl,7
-	sar	al,cl
-	pop	cx
-	mov	ah,[di+9]
-	cmp	al,ah
-	jne	ab41		;if it's bigger than 1 byte
-	cmp	ax,[di+10]
-	jne	ab41		;ditto
-	mov	bh,0		;no displacement
-	or	bl,[di+8]
-	jz	ab42		;if disp = 0 and it's not (E)BP
-	inc	bh		;disp = 1 byte
-	or	cl,40h		;set MOD = 1
-	jmp	ab42		;done
+;--- Finish up with the operand.
 
-ab41:	or	cl,80h		;set MOD = 2
-
-ab42:	mov	[di+3],bh	;store displacement size
-	mov	[di+4],cx	;store MOD R/M and maybe SIB
-
-;	Finish up with the operand.
-
-ab43:	dec	si
-ab44:	call skipwhite
-	add	di,12
-	cmp	al,CR
-	je	ab99		;if end of line
-	cmp	al,';'
-	je	ab99		;if comment (ditto)
-	cmp	al,','
-	jne	ab45		;if not comma ( ==> error)
-	cmp	di,line_out+36
-	jae	ab45		;if too many operands
+ab43:
+	dec si
+ab44:
 	call skipwhite
-	jmp	ab02
+	add di,sizeof OPRND
+	cmp al,CR
+	je ab99			;if end of line
+	cmp al,';'
+	je ab99			;if comment (ditto)
+	cmp al,','
+	jne ab45		;if not comma ( ==> error)
+	cmp di,offset line_out+ 3 * sizeof OPRND
+	jae ab45		;if too many operands
+	call skipwhite
+	jmp ab02
 
-ab45:	jmp	aa13b		;error jump
+ab45:
+	jmp aa13b		;error jump
 
-ab99:	mov	byte [di],-1	;end of parsing phase
-	push	si		;save the location of the end of the string
+ab99:
+	mov [di].OPRND.flags,-1;end of parsing phase
+	push si			;save the location of the end of the string
 
-;	For the next phase, we match the parsed arguments with the set of
-;	permissible argument lists for the opcode.  The first match wins.
-;	Therefore the argument lists should be ordered such that the
-;	cheaper ones come first.
+;   For the next phase, we match the parsed arguments with the set of
+;   permissible argument lists for the opcode.  The first match wins.
+;   Therefore the argument lists should be ordered such that the
+;   cheaper ones come first.
 
-;	There is a tricky issue regarding sizes of memory references.
-;	Here are the rules:
-;	   1.	If a memory reference is given with a size, then it's OK.
-;	   2.	If a memory reference is given without a size, but some
-;		other argument is a register (which implies a size),
-;		then the memory reference inherits that size.
-;			Exceptions:	OP_CL does not imply a size
-;					OP_SHOSIZ
-;	   3.	If 1 and 2 do not apply, but this is the last possible argument
-;		list, and if the argument list requires a particular size, then
-;		that size is used.
-;	   4.	In all other cases, flag an error.
+;   There is a tricky issue regarding sizes of memory references.
+;   Here are the rules:
+;      1.   If a memory reference is given with a size, then it's OK.
+;      2.   If a memory reference is given without a size, but some
+;       other argument is a register (which implies a size),
+;       then the memory reference inherits that size.
+;           Exceptions: OP_CL does not imply a size
+;                   OP_SHOSIZ
+;      3.   If 1 and 2 do not apply, but this is the last possible argument
+;       list, and if the argument list requires a particular size, then
+;       that size is used.
+;      4.   In all other cases, flag an error.
 
-ac01:	xor	ax,ax		;zero out rmaddr through varflags or a_opcode
-	mov	di,rmaddr
-	mov	cx,7
-	rep	stosw
-	mov	si,[mneminfo]	;address of the next argument variant
+ac01:				;<--- next possible argument list
+;--- zero out rmaddr,immaddr, xxaddr, opsize, varflags ... a_opcode
+	xor ax,ax
+	mov di,offset rmaddr
+	mov cx,7
+	rep stosw
+	mov si,[mneminfo]	;address of the next argument variant
 
-;	Sort out initial bytes.  At this point:
-;	si = address of next argument variant
-;	di = address of next parsed argument table
+;--- Sort out initial bytes.  At this point:
+;--- si = address of next argument variant
+;--- di = address of next parsed argument table
 
-ac02:	lodsb
-	sub	al,ASM_MACH0
-	jb	ac05		;if no more special bytes
-	cmp	al,ASM_LOCKABLE-ASM_MACH0
-	je	ac03		;if ASM_LOCKABLE
-	ja	ac04		;if ASM_END ( ==> error)
-	mov	byte [dismach],al	;save machine type
-	jmp	ac02		;back for next byte
-ac03:	or	byte [varflags],VAR_LOCKABLE
-	jmp	ac02		;back for next byte
+ac02:
+	lodsb
+	sub al,ASM_MACH0
+	jb ac05			;if no more special bytes
+	cmp al,ASM_LOCKABLE-ASM_MACH0
+	je @F			;if ASM_LOCKABLE
+	ja ac04			;if ASM_END ( ==> error)
+	mov [dismach],al;save machine type
+	jmp ac02		;back for next byte
+@@:
+	or [varflags],VAR_LOCKABLE
+	jmp ac02		;back for next byte
 
-ac04:	jmp	aa13a		;error
+ac04:
+	jmp aa13a		;error
 
-;	Get and unpack the word.
+;--- Get and unpack the word.
 
-ac05:	dec	si
+ac05:
+	dec si
 	lodsw
-	xchg	al,ah		;put into little-endian order
-	xor	dx,dx
-	mov	bx,ASMMOD
-	div	bx		;ax = a_opcode; dx = index into opindex
-	mov	[a_opcode],ax	;save ax
-	mov	[a_opcode2],ax	;save the second copy
-	cmp	ax,0dfh
-	ja	ac05a		;if not coprocessor instruction
-	cmp	al,0d8h
-	jb	ac05a		;ditto
-	or	byte [dmflags],DM_COPR	;flag it as an x87 instruction
-	mov	ah,al		;ah = low order byte of opcode
-	lodsb			;get extra byte
-	mov	[regmem],al	;save it in regmem
-	mov	[a_opcode2],ax	;save this for obsolete-instruction detection
-	or	byte [varflags],VAR_MODRM	;flag its presence
-ac05a:	mov	[mneminfo],si	;save si back again
-	mov	si,dx
-	mov	bl,[opindex+si]
-	lea	si,[oplists+bx]	;si = the address of our operand list
-	mov	di,line_out
+	xchg al,ah			;put into little-endian order
+	xor dx,dx
+	mov bx,ASMMOD
+	div bx				;ax = a_opcode; dx = index into opindex
+	mov [a_opcode],ax	;save ax
+	mov [a_opcode2],ax	;save the second copy
+	cmp ax,0dfh
+	ja @F				;if not coprocessor instruction
+	cmp al,0d8h
+	jb @F				;ditto
+	or [dmflags],DM_COPR;flag it as an x87 instruction
+	mov ah,al			;ah = low order byte of opcode
+	lodsb				;get extra byte
+	mov [regmem],al		;save it in regmem
+	mov [a_opcode2],ax	;save this for obsolete-instruction detection
+	or [varflags],VAR_MODRM	;flag its presence
+@@:
+	mov [mneminfo],si	;save si back again
+	mov si,dx
+	mov bl,[opindex+si]
+	lea si,[oplists+bx]	;si = the address of our operand list
+	mov di,offset line_out
 
-;	Begin loop over operands.  At this point si and di are as for ac02.
+;--- Begin loop over operands.  At this point si and di are as for ac02.
 
-ac06:	lodsb			;get next operand byte
-	cmp	al,0
-	je	ac10		;if end of list
-	cmp	byte [di],-1
-	je	ac01		;if too few operands were given
-	cmp	al,OP_SIZE
-	jb	ac07		;if no size needed
-	mov	ah,0
-	mov	cl,4
-	shl	ax,cl
-	shr	al,cl
-	mov	[a_reqsize],ah	;save it away
-	jmp	ac08
+ac06:
+	lodsb			;get next operand byte
+	cmp al,0
+	je ac10			;if end of list
+	cmp [di].OPRND.flags,-1
+	je ac01			;if too few operands were given
+	cmp al,OP_SIZE
+	jb @F			;if no size needed
+;	int 3
+;	mov ah,0
+;	mov cl,4
+;	shl ax,cl		;move bits 4-7 (size) to ah (OP_1632=5,OP_8=6,OP_16=7,...)
+;	shr al,cl		;move bits 0-3 back
+	db 0d4h,10h		;=aam 10h (AX=00XY -> AX=0X0Y)
+	mov [a_reqsize],ah	;save it away
+	jmp ac08
+@@:					;AL = OP_M64 - ...
+	add al,8*2-2	;adjust for the 8 start entries im asm_jmp1
+ac08:
+	cbw
+	xchg ax,bx		;now bx contains the offset
+	mov cx,[asm_jmp1+bx] ;subroutine address
+	shr bx,1
+	mov al,[bittab+bx]
+	test al,[di].OPRND.flags
+	jz ac09			;if no required bits are present
+	call cx			;call its specific routine
+	cmp word ptr [si-1],(OP_1632+OP_R)*256+(OP_1632+OP_R_MOD)
+	je ac06			;(hack) for IMUL instruction
+	add di,sizeof OPRND	;next operand
+	jmp ac06		;back for more
 
-ac07:	add	al,16-2		;move these to the end of the previous list
+ac09:
+	jmp ac01		;back to next possibility
 
-ac08:	cbw
-	xchg	ax,bx		;now bx contains the offset
-	mov	cx,[asm_jmp1+bx] ;subroutine address
-	shr	bx,1
-	mov	al,[bittab+bx]
-	test	al,[di]
-	jz	ac09		;if no required bits are present
-	call	cx		;call its specific routine
-	cmp	word [si-1],(OP_1632+OP_R)*256+(OP_1632+OP_R_MOD)
-	je	ac06		;(hack) for IMUL instruction
-	add	di,12		;next operand
-	jmp	ac06		;back for more
+;--- End of operand list.
 
-ac09:	jmp	ac01		;back to next possibility
+ac10:
+	cmp [di].OPRND.flags,-1
+	jne ac09		;if too many operands were given
 
-;	End of operand list.
+;--- Final check on sizes
 
-ac10:	cmp	byte [di],-1
-	jne	ac09		;if too many operands were given
+	mov al,[varflags]
+	test al,VAR_SIZ_NEED
+	jz ac12			;if no size needed
+	test al,VAR_SIZ_GIVN
+	jnz ac12		;if a size was given
+	test al,VAR_SIZ_FORCD
+	jz ac09			;if the size was not forced ( ==> reject)
+	mov si,[mneminfo]
+	cmp byte ptr [si],ASM_END
+	je ac12			;if this is the last one
+ac11:
+	jmp aa13a		;it was not ==> error (not a retry)
 
-;	Final check on sizes
+;--- Check other prefixes.
 
-	mov	al,[varflags]
-	test	al,VAR_SIZ_NEED
-	jz	ac12		;if no size needed
-	test	al,VAR_SIZ_GIVN
-	jnz	ac12		;if a size was given
-	test	al,VAR_SIZ_FORCD
-	jz	ac09		;if the size was not forced ( ==> reject)
-	mov	si,[mneminfo]
-	cmp	byte [si],ASM_END
-	je	ac12		;if this is the last one
-ac11:	jmp	aa13a		;it was not ==> error (not a retry)
+ac12:
+	mov al,[aa_saved_prefix]
+	cmp al,0
+	jz ac14			;if no saved prefixes to check
+	cmp al,0f0h
+	jne @F			;if it's a rep prefix
+	test [varflags],VAR_LOCKABLE
+	jz ac11			;if this variant is not lockable - error
+	jmp ac14		;done
+@@:
+	mov ax,[a_opcode]	;check if opcode is OK for rep{,z,nz}
+	and al,not 1		;clear low order bit (MOVSW -> MOVSB)
+	cmp ax,0ffh
+	ja ac11				;if it's not a 1 byte instruction - error
+	mov di,offset replist	;list of instructions that go with rep
+	mov cx,5+2			;scan all (REP + REPxx)
+	repne scasb
+	jnz ac11			;if it's not among them - error
 
-;	Check other prefixes.
+ac14:
+	test [asm_mn_flags],AMF_MSEG
+	jz @F				;if no segment prefix before mnemonic
+	mov ax,[a_opcode]	;check if opcode allows this
+	cmp ax,0ffh
+	ja ac11				;if it's not a 1 byte instruction - error
+	mov di,offset prfxtab
+	mov cx,P_LEN
+	repne scasb
+	jnz ac11			;if it's not in the list - error
+@@:
+	mov bx,[immaddr]
+	or bx,bx
+	jz ac16			;if no immediate data
+	mov al,[opsize]
+	neg al
+	shl al,1
+	test al,[bx+7]
+	jnz ac11		;if the immediate data was too big - error
 
-ac12:	mov	al,[aa_saved_prefix]
-	cmp	al,0
-	jz	ac14		;if no saved prefixes to check
-	cmp	al,0f0h
-	jne	ac13		;if it's a rep prefix
-	test	byte [varflags],VAR_LOCKABLE
-	jz	ac11		;if this variant is not lockable ( ==> error)
-	jmp	ac14		;done
+;   Put the instruction together
+;   (maybe is this why they call it an assembler)
 
-ac13:	mov	ax,[a_opcode]	;check if opcode is OK for rep{,z,nz}
-	and	al,~1		;clear low order bit
-	cmp	ax,0ffh
-	ja	ac11		;if it's not a 1 byte instruction
-	mov	di,replist	;list of instructions that go with rep
-	mov	cx,7
-	repne	scasb
-	jnz	ac11		;if it's not among them
-
-ac14:	test	byte [asm_mn_flags],AMF_MSEG
-	jz	ac15		;if no segment prefix before mnemonic
-	mov	ax,[a_opcode]	;check if opcode allows this
-	cmp	ax,0ffh
-	ja	ac11		;if it's not a 1 byte instruction
-	mov	di,prfxtab
-	mov	cx,P_LEN
-	repne	scasb
-	jnz	ac11		;if it's not in the list
-
-ac15:	mov	bx,[immaddr]
-	or	bx,bx
-	jz	ac16		;if no immediate data
-	mov	al,[opsize]
-	neg	al
-	shl	al,1
-	test	al,[bx+7]
-	jnz	ac11		;if the immediate data was too big
-
-;	Put the instruction together
-;	(maybe is this why they call it an assembler)
-
-;	First, the prefixes (including preceding WAIT instruction)
+;   First, the prefixes (including preceding WAIT instruction)
 
 ac16:
-	mov	di,[a_addr]
-	mov	es,[a_addr+4]
-	test	byte [asm_mn_flags],AMF_WAIT
-	jz	ac17		;if no wait instruction beforehand
-	mov	al,9bh
-	stosb
+if PM
+	sizeprf		;mov edx,[a_addr]
+endif
+	mov dx,[a_addr+0]
+	mov bx,[a_addr+4]
+	test [asm_mn_flags],AMF_WAIT
+	jz @F			;if no wait instruction beforehand
+	mov al,9bh
+	call writeasm
+@@:
+	mov al,[aa_saved_prefix]
+	cmp al,0
+	jz @F			;if no LOCK or REP prefix
+	call writeasm
+@@:
 
-ac17:	mov	al,[aa_saved_prefix]
-	cmp	al,0
-	jz	ac18		;if no LOCK or REP prefix
-	stosb
+;--- a 67h address size prefix is needed
+;--- 1. for CS32: if AMF_ADDR=1 and AMF_A32=1
+;--- 2. for CS16: if AMF_ADDR=1 and AMF_A32=0
 
-ac18:	
-	mov	al,67h		;address-size prefix
+	mov al,[asm_mn_flags]
+	test al,AMF_ADDR
+	jz @F
+	and al,AMF_A32
+if PM
+	mov ah,[bCSAttr]
+	and ah,40h
+	or al,ah
+endif
+	and al,AMF_A32 + 40h
+	jz @F
+	cmp al,AMF_A32 + 40h
+	jz @F
+	mov al,67h
+	call writeasm
+@@:
+
+;--- a 66h data size prefix is needed
+;--- for CS16: if VAR_D32 == 1 or AMF_D32 == 1
+;--- for CS32: if VAR_D16 == 1 or AMF_D16 == 1
+
 	mov ah,[asm_mn_flags]
-	test ah,AMF_A32
-	jz	ac19		;if none
-%if PM    
-    test byte [bCSAttr],40h
-    jnz ac19
-%endif    
-	stosb
-ac19:
-	mov	al,66h		;operand-size prefix
+	mov al,[varflags]
+if PM
+	test [bCSAttr],40h
+	jz @F
+	test al, VAR_D16
+	jnz ac20_1
+	test ah, AMF_D16
+	jnz ac20_1
+	jmp ac21
+@@:
+endif
+	test al,VAR_D32
+	jnz ac20_1
 	test ah,AMF_D32
-	jnz	ac20		;if flag set for 32-bit operands
-	test byte [varflags],VAR_D32
-	jz	ac21		;if no flag on instruction variant
-ac20:
-%if PM    
-    test byte [bCSAttr],40h
-    jnz ac21
-%endif    
-	stosb			;store operand-size prefix
-
+	jz ac21
+ac20_1:
+	mov al,66h
+	call writeasm		;store operand-size prefix
 ac21:
-	mov	al,[aa_seg_pre]
-	cmp	al,0
-	jz	ac22		;if no segment prefix
-	stosb
-	cmp	al,64h
-	jb	ac22		;if not 64 or 65 (FS or GS)
-	or	byte [asm_mn_flags],AMF_FSGS	;flag it
+	mov al,[aa_seg_pre]
+	cmp al,0
+	jz @F			;if no segment prefix
+	call writeasm
+	cmp al,64h
+	jb @F			;if not 64 or 65 (FS or GS)
+	or [asm_mn_flags],AMF_FSGS	;flag it
+@@:
 
-;	Now emit the instruction itself.
+;--- Now emit the instruction itself.
 
-ac22:	mov	ax,[a_opcode]
-	mov	bx,ax
-	sub	bx,576
-	jae	ac23		;if 576-...
-	cmp	ax,512
-	jb	ac24		;if regular instruction
-	or	byte [dmflags],DM_COPR	;flag it as an x87 instruction
-	and	al,038h		;get register part
-	or	[regmem],al
-	xchg	ax,bx		;mov ax,bx (the low bits of bx are good)
-	and	al,7
-	or	al,0d8h
-	jmp	ac25		;on to decoding the instruction
+	mov ax,[a_opcode]
+	mov di,ax
+	sub di,240h
+	jae @F			;if 576-...
+	cmp ax,200h
+	jb ac24			;if regular instruction
+	or [dmflags],DM_COPR	;flag it as an x87 instruction
+	and al,038h		;get register part
+	or [regmem],al
+	xchg ax,di		;mov ax,di (the low bits of di are good)
+	and al,7
+	or al,0d8h
+	jmp ac25		;on to decoding the instruction
+@@:
+	mov cl,3		;one instruction of a group
+	shr di,cl
+	and al,7
+	shl al,cl
+	or [regmem],al
+	shl di,1
+	mov ax,[agroups+di]	;get actual opcode
 
-ac23:	mov	cl,3		;one instruction of a group
-	shr	bx,cl
-	and	al,7
-	shl	al,cl
-	or	[regmem],al
-	shl	bx,1
-	mov	ax,[agroups+bx]	;get actual opcode
+ac24:
+	cmp ah,0
+	jz ac25			;if no 0fh first
+	push ax			;store a 0fh
+	mov al,0fh
+	call writeasm
+	pop ax
 
-ac24:	cmp	ah,0
-	jz	ac25		;if no 0fh first
-	push	ax		;store a 0fh
-	mov	al,0fh
-	stosb
-	pop	ax
+ac25:
+	or al,[opcode_or]	;put additional bits into the op code
+	call writeasm		;store the op code itself
 
-ac25:	or	al,[opcode_or]	;put additional bits into the op code
-	stosb			;store the op code itself
+;--- Now store the extra stuff that comes with the instruction.
 
-;	Now store the extra stuff that comes with the instruction.
+	mov ax,word ptr [regmem]
+	test [varflags],VAR_MODRM
+	jz @F			;if no mod reg/mem
+	call writeasm
+	test [asm_mn_flags],AMF_SIB
+	jz @F			;if no SIB
+	mov al,ah
+	call writeasm	;store the MOD R/M and SIB, too
+@@:
 
-	mov	ax,word [regmem]
-	test	byte [varflags],VAR_MODRM
-	jz	ac26		;if no mod reg/mem
-	stosb
-	test	byte [asm_mn_flags],AMF_SIB
-	jz	ac26		;if no SIB
-	dec	di
-	stosw			;store the MOD R/M and SIB, too
+	mov di,[rmaddr]
+	or di,di
+	jz @F			;if no offset associated with the R/M
+	mov cl,[di].OPRND.sizedis
+	mov ch,0
+	lea si,[di].OPRND.num	;store the R/M offset (or memory offset)
+	call writeasmn
+@@:
 
-ac26:	mov	bx,[rmaddr]
-	or	bx,bx
-	jz	ac27		;if no offset associated with the R/M
-	mov	cl,[bx+3]
-	mov	ch,0
-	lea	si,[bx+8]
-	rep	movsb		;store the R/M offset (or memory offset)
+;--- Now store immediate data
 
-;	Now store immediate data
-
-ac27:	mov	bx,[immaddr]
-	or	bx,bx
-	jz	ac28		;if no immediate data
-	mov	al,[opsize]
+	mov di,[immaddr]
+	or di,di
+	jz @F			;if no immediate data
+	mov al,[opsize]
 	cbw
-	xchg	ax,cx		;mov cx,ax
-	lea	si,[bx+8]
-	rep	movsb
+	xchg ax,cx		;mov cx,ax
+	lea si,[di].OPRND.num
+	call writeasmn
+@@:
 
-;	Now store additional bytes (needed for, e.g., enter instruction)
+;--- Now store additional bytes (needed for, e.g., enter instruction)
+;--- also for FAR memory address
 
-ac28:	mov	bx,[xxaddr]
-	or	bx,bx
-	jz	ac29		;if no additional data
-	lea	si,[bx+4]
+	mov di,[xxaddr]
+	or di,di
+	jz @F			;if no additional data
+	lea si,[di].OPRND.numadd	;number of bytes (2 for FAR, size of segment)
 	lodsb
 	cbw
-	xchg	ax,cx		;mov cx,ax
-	rep	movsb
+	xchg ax,cx		;mov cx,ax
+	call writeasmn
+@@:
 
-;	Done emitting.
+;--- Done emitting. Update asm address offset.
 
-ac29:	
-	push ss		;restore ES
-	pop	es
-	mov	[a_addr],di
+if PM
+	sizeprf		;mov [a_addr],edx
+endif
+	mov [a_addr],dx
 
-;	Compute machine type.
+;--- Compute machine type.
 
-	cmp	byte [dismach],3
-	jae	ac31		;if we already know a 386 is needed
-	test	byte [asm_mn_flags],AMF_D32 | AMF_A32 | AMF_FSGS
-	jnz	ac30		;if 386
-	test	byte [varflags],VAR_D32
-	jz	ac31		;if not 386
-ac30:	mov	byte [dismach],3
-ac31:	mov	di,a_opcode2+2	;info on this instruction
-	call	showmach	;get machine message into si, length into cx
-	jcxz	ac33		;if no message
+	cmp [dismach],3
+	jae ac31		;if we already know a 386 is needed
+	test [asm_mn_flags], AMF_D32 or AMF_A32 or AMF_FSGS
+	jnz ac30		;if 386
+	test [varflags],VAR_D32
+	jz ac31			;if not 386
+ac30:
+	mov [dismach],3
+ac31:
+	mov di,offset a_opcode2+2	;info on this instruction
+	call showmach		;get machine message into si, length into cx
+	jcxz ac33			;if no message
 
-ac32:	mov	di,line_out
-	rep	movsb		;copy the line to line_out
+ac32:
+	mov di,offset line_out
+	rep movsb		;copy the line to line_out
 	call putsline
 
-ac33:	jmp	aa01		;back for the next input line
-
-;	||| This is debugging code.  It assumes that the original value
-;	of a_addr is on the top of the stack.
-
-;	pop	si		;get orig. a_addr
-;	mov	ax,[a_addr+2]
-;	mov	[u_addr],si
-;	mov	[u_addr+2],ax
-;	mov	bx,[a_addr]
-;	sub	bx,si
-;	mov	di,line_out
-;	mov	cx,10
-;	mov	al,' '
-;	rep	stosb
-;	mov	ds,[a_addr+2]
-
-;ax1:	lodsb
-;	call hexbyte		;display the bytes generated
-;	dec	bx
-;	jnz	ax1
-;	push	cs
-;	pop	ds
-;	call putsline
-;	mov	byte disflags,0
-;	call	disasm		;disassemble the new instruction
-;	jmp	aa01		;back to next input line
-
-;	Routines to check for specific operand types.
-;	Upon success, the routine returns.
-;	Upon failure, it pops the return address and jumps to ac01.
-;	The routines must preserve si and di.
-
-;	OP_RM and OP_M:  form MOD R/M byte.
-
-ao01:	call	ao90		;form reg/mem byte
-	jmp	ao07		;go to the size check
-
-;	OP_R:  register.
-
-ao02:	mov	al,[di+4]	;register number
-	and	al,7
-	mov	cl,3
-	shl	al,cl		;shift it into place
-	or	[regmem],al	;put it into the reg/mem byte
-	jmp	ao07		;go to the size check
-
-;	OP_R_ADD:  register, added to the instruction.
-
-ao03:	mov	al,[di+4]
-	and	al,7
-	mov	[opcode_or],al	;put it there
-	jmp	ao07		;go to the size check
-
-;	OP_IMM:  immediate data.
-
-ao04:	mov	[immaddr],di	;save the location of this
-	jmp	ao07		;go to the size check
-
-;	OP_MOFFS:  just the memory offset
-
-ao05:	test	byte [di],ARG_MODRM
-	jnz	ao11		;if MOD R/M byte ( ==> reject)
-	mov	[rmaddr],di	;save the pointer
-	jmp	ao07		;go to the size check
-
-;	OP_AX:  check for AL/AX/EAX
-
-ao06:	test	byte [di+4],7
-	jnz	ao11		;if wrong register
-	;jmp	ao07		;go to the size check
-
-;	Size check
-
-ao07:	or	byte [varflags],VAR_SIZ_NEED
-	mov	al,[a_reqsize]
-	sub	al,5		;OP_1632 >> 4
-	jl	ao12		;if OP_ALL
-	jz	ao13		;if OP_1632
-	add	al,-3
-	adc	al,3		;convert 3 --> 4
-ao08:	or	byte [varflags],VAR_SIZ_FORCD + VAR_SIZ_NEED
-	mov	bl,[di+2]
-	or	bl,bl
-	jz	ao09		;if no size given
-	or	byte [varflags],VAR_SIZ_GIVN
-	cmp	al,bl
-	jne	ao11		;if sizes conflict
-ao09:	cmp	al,[opsize]
-	je	ao10		;if sizes agree
-	xchg	al,[opsize]
-	cmp	al,0
-	jnz	ao11		;if sizes disagree
-ao10:	ret
-
-ao11:	jmp	ao50		;reject
-
-;	OP_ALL - Allow all sizes.
-
-ao12:	mov	al,[di+2]
-	cmp	al,1
-	je	ao15		;if byte
-	jb	ao14		;if unknown
-	or	byte [opcode_or],1	;set bit in instruction
-	jmp	ao14		;if size is 16 or 32
-
-;	OP_1632 - word or dword.
-
-ao13:	mov	al,[di+2]
-ao14:	cmp	al,0
-	je	ao16		;if still unknown
-	cmp	al,2
-	je	ao15		;if word
-	cmp	al,4
-	jne	ao11		;if not dword
-	or	byte [varflags],VAR_D32	;set flag
-ao15:	mov	[opsize],al
-	or	byte [varflags],VAR_SIZ_GIVN
-ao16:	ret
-
-;	OP_M64 - 64-bit memory reference.
-;	OP_MFLOAT - single-precision floating point memory reference.
-;	OP_MDOUBLE - double-precision floating point memory reference.
-;	OP_M80 - 80-bit memory reference.
-;	OP_MXX - memory reference, size unknown.
-;	OP_FARMEM - far memory pointer
-
-ao17:	call	ao90		;form reg/mem byte
-	mov	al,[asm_siznum+bx-(OP_M64+16-2)/2]
-	jmp	ao08		;check size
-
-;	OP_FARP - far memory address contained in instruction
-
-ao21:	mov	al,2
-	cmp	word [di+10],0
-	jz	ao22		;if 16 bit address
-	or	byte [varflags],VAR_D32
-	mov	al,4
-ao22:	mov	byte [di+4],2
-	mov	[immaddr],di
-	mov	[opsize],al
-ao22a:	mov	[xxaddr],di
-	ret
-
-;	OP_REL8 - relative address
-
-ao23:	mov	al,9		;short
-	call	ao60		;check the size
-	mov	ax,[a_addr]	;offset
-	inc	ax
-	inc	ax		;$
-	test	byte [asm_mn_flags],AMF_D32
-	jnz	ao23a		;if JECXZ
-	test	byte [varflags],VAR_D32
-	jz	ao23b		;if no ECX given in loop instruction
-ao23a:
-; JECXZ, LOOPD, LOOPZD and LOOPNZD need a 67h, not a 66h prefix
-	and 	byte [asm_mn_flags],~AMF_D32
-	or  	byte [asm_mn_flags],AMF_A32 | AMF_A32SET
-	inc	ax
-ao23b:	xchg	ax,bx
-	xor	cx,cx
-	mov	ax,[di+8]
-	mov	dx,[di+10]
-	sub	ax,bx
-	sbb	dx,cx
-	mov	[di+5],al
-	mov	cl,7
-	sar	al,cl
-	cmp	al,ah
-	jne	ao24		;if too big
-	cmp	ax,dx
-	jne	ao24		;if too big
-	mov	byte [di+4],1	;save the length
-	jmp	ao22a		;save it away
-
-ao24:	jmp	ao50		;reject
-
-;	OP_REL1632:  relative jump to a longer address.
-
-ao25:	mov	bx,[a_addr]
-	inc	bx
-	inc	bx
-	inc	bx
-	cmp	word [a_opcode],100h
-	jb	ao26
-	inc	bx
-ao26:	mov	dx,[di+10]
-	mov	al,[di+2]
-	cmp	al,0
-	je	ao27		;if no size given
-	cmp	al,10
-	je	ao27		;if "long" given
-	cmp	al,4
-	jne	ao24		;if the size given was not "dword"
-	inc	bx		;once for the prefix, twice for the longer data
-	inc	bx
-	inc	bx
-	or	byte [varflags],VAR_D32
-	jmp	ao28
-
-ao27:	or	dx,dx
-	jnz	ao24		;if operand is too big
-	mov	al,2
-ao28:	mov	[di+4],al	;store the size
-	mov	ax,[di+8]
-	xor	cx,cx
-	sub	ax,bx
-	sbb	dx,cx
-	mov	[di+5],ax
-	mov	[di+7],dx
-	mov	[xxaddr],di
-	ret
-
-;	OP_1CHK - The assembler can ignore this one.
-
-ao29:	pop	ax		;discard return address
-	jmp	ac06		;next operand
-
-;	OP_STI - ST(I).
-
-ao30:	mov	al,30		;code for ST
-	mov	bl,[di+5]
-	jmp	ao38		;to common code
-
-;	OP_CR
-
-ao31:	mov	al,[di+5]	;get the index
-	cmp	al,4
-	ja	ao24		;if too big
-	jne	ao32		;if not CR4
-	mov	byte [dismach],5	;CR4 is new to the 586
-ao32:	cmp	al,1
-	jne	ao33
-	cmp	byte [di+12],-1
-	jne	ao24		;if another arg (can't mov CR1,xx)
-ao33:	mov	al,32		;code for CR
-	jmp	ao37		;to common code
-
-;	OP_DR
-
-ao34:	mov	al,33		;code for DR
-	jmp	ao37		;to common code
-
-;	OP_TR
-
-ao35:	mov	al,[di+5]	;get the index
-	cmp	al,3
-	jb	ao24		;if too small
-	cmp	al,6
-	jae	ao36
-	mov	byte [dismach],4	;TR3-5 are new to the 486
-ao36:	mov	al,34		;code for TR
-
-;	Common code for these weird registers.
-
-ao37:	mov	bl,[di+5]
-	mov	cl,3
-	shl	bl,cl
-ao38:	or	[regmem],bl
-	or	byte [varflags],VAR_MODRM
-	cmp	al,[di+4]	;check for the right numbered register
-	je	ao40		;if yes, then return
-ao38a:	jmp	ao50
-
-;	OP_SEGREG
-
-ao39:	mov	al,[di+4]
-	sub	al,24
-	cmp	al,6
-	jae	ao38a		;if not a segment register
-	mov	cl,3
-	shl	al,cl
-	or	[regmem],al
-ao40:	ret
-
-;	OP_IMMS8 - Sign-extended immediate byte
-
-ao41:	mov	ax,[di+8]
-	mov	cl,7
-	sar	al,cl
-	jmp	ao43		;common code
-
-;	OP_IMM8 - Immediate byte
-
-ao42:	mov	ax,[di+8]
-	mov	al,0
-ao43:	cmp	al,ah
-	jne	ao50		;if too big
-	cmp	ax,[di+10]
-	jne	ao50		;if too big
-	mov	al,1
-	call	ao60		;check that size == 0 or 1
-	mov	ah,[di+8]	;store the byte, length 1
-	mov	[di+4],ax
-	mov	[xxaddr],di
-ao43r:	ret
-
-;	OP_ECX - CX or ECX, determining the operand size
-
-ao43m:	cmp	byte [di+4],9	;CX
-	je	ao43r		;if CX (do nothing)
-	or	byte [varflags],VAR_D32
-	mov	al,17
-	jmp	ao48a		;require ECX
-
-;	OP_SHOSIZ - force the user to declare the size of the next operand
-
-ao44:	test	byte [varflags],VAR_SIZ_NEED
-	jz	ao45		;if no testing needs to be done
-	test	byte [varflags],VAR_SIZ_GIVN
-	jz	ao50		;if size was given ( ==> reject)
-ao45:	and	byte [varflags],~VAR_SIZ_GIVN	;clear the flag
-	cmp	byte [si],OP_IMM8
-	je	ao45a		;if OP_IMM8 is next, then don't set VAR_SIZ_NEED
-	or	byte [varflags],VAR_SIZ_NEED
-ao45a:	mov	byte [opsize],0
-	pop	ax		;discard return address
-	jmp	ac06		;next operand
-
-;	OP_1
-
-ao46:	cmp	word [di+7],101h
-	jmp	ao49		;test it later
-
-;	OP_3
-
-ao47:	cmp	word [di+7],301h
-	jmp	ao49		;test it later
-
-;	OP_DX, OP_CL, OP_ST, OP_ES, ..., OP_GS
-
-ao48:	mov	al,[asm_regnum+bx-(OP_DX+16-2)/2]
-ao48a:	cbw
-	cmp	ax,[di+4]
-
-ao49:	je	ao51
-
-;	Reject this operand list.
-
-ao50:	pop	ax		;discard return address
-	jmp	ac01		;go back to try the next alternative
-
-ao51:	ret
-
-;	AASIZCHK - Check that the size given is 0 or AL.
-
-ao60:	cmp	byte [di+2],0
-	je	ao51
-	cmp	byte [di+2],al
-	je	ao51
-	pop	ax		;discard return address
-	jmp	ao50
-
-;	Do reg/mem processing.
-;	Uses	AX
-
-ao90:	test	byte [di],ARG_JUSTREG
-	jnz	ao92		;if just register
-	test	byte [di],ARG_MODRM
-	jz	ao91		;if no precomputed MOD R/M byte
-	mov	ax,word [di+4]	;get the precomputed bytes
-	jmp	ao93		;done
-
-ao91:	mov	al,6		;convert plain displacement to MOD R/M
-	test	byte [asm_mn_flags],AMF_A32
-	jz	ao93		;if 16 bit addressing
-	dec	ax
-	jmp	ao93		;done
-
-ao92:	mov	al,[di+4]	;convert register to MOD R/M
-	and	al,7		;get low 3 bits
-	or	al,0c0h
-
-ao93:	or	word [regmem],ax	;store the MOD R/M and SIB
-	or	byte [varflags],VAR_MODRM	;flag its presence
-	mov	[rmaddr],di	;save a pointer
-	ret			;done
-
-;	AAIFNUM - Determine if there's a number next.
-;	Entry	AL	First character of number
-;		SI	Address of next character of number
-;	Exit	CY	Clear if there's a number, set otherwise.
-;	Uses	None.
-
-aaifnum:
-	cmp	al,'-'
-	je	aai2		;if minus sign (carry is clear)
-	push	ax
-	sub	al,'0'
-	cmp	al,10
-	pop	ax
-	jb	aai1		;if a digit
-	push	ax
-	and	al,TOUPPER
-	sub	al,'A'
-	cmp	al,6
-	pop	ax
-aai1:	cmc			;carry clear <==> it's a number
-aai2:	ret
-
-;	AAGETI - Get a number from the input line.
-;	Entry	AL	First character of number
-;		SI	Address of next character of number
-;	Exit	DX:BX	Resulting number
-;		CL	1 if it's a byte, 2 if a word, 4 if a dword
-;		AL	Next character not in number
-;		SI	Address of next character after that
-;	Uses	AH, CH
-
-aageti:	cmp	al,'-'
-	je	aag1		;if negative
-	call	aag4		;get the bare number
-	mov	cx,1		;set up cx
-	or	dx,dx
-	jnz	aag2		;if dword
-	or	bh,bh
-	jnz	aag3		;if word
-	ret			;it's a byte
-
-aag1:	lodsb
-	call	aag4		;get the bare number
-	mov	cx,bx
-	or	cx,dx
-	mov	cx,1
-	jz	aag1a		;if -0
-	not	dx		;negate the answer
-	neg	bx
-	cmc
-	adc	dx,0
-	test	dh,80h
-	jz	aag7		;if error
-	cmp	dx,-1
-	jne	aag2		;if dword
-	test	bh,80h
-	jz	aag2		;if dword
-	cmp	bh,-1
-	jne	aag3		;if word
-	test	bl,80h
-	jz	aag3		;if word
-aag1a:	ret			;it's a byte
-
-aag2:	inc	cx		;return:  it's a dword
-	inc	cx
-aag3:	inc	cx		;return:  it's a word
-	ret
-
-aag4:	xor	bx,bx		;get the basic integer
-	xor	dx,dx
-	call	getnyb
-	jc	aag7		;if not a hex digit
-aag5:	or	bl,al		;add it to the number
+ac33:
+	jmp aa01		;back for the next input line
+
+if 0
+;--- This is debugging code.  It assumes that the original value
+;--- of a_addr is on the top of the stack.
+
+	pop si		;get orig. a_addr
+	mov ax,[a_addr+4]
+	mov [u_addr+0],si
+	mov [u_addr+4],ax
+	mov bx,[a_addr]
+	sub bx,si
+	mov di,offset line_out
+	mov cx,10
+	mov al,' '
+	rep stosb
+	mov ds,[a_addr+4]
+@@:
 	lodsb
-	call	getnyb
-	jc	aag1a		;if done
-	test	dh,0f0h
-	jnz	aag7		;if overflow
-	mov	cx,4
-aag6:	shl	bx,1		;shift it by 4
-	rcl	dx,1
-	loop	aag6
-	jmp	aag5
+	call hexbyte	;display the bytes generated
+	dec bx
+	jnz @B
+	push ss
+	pop ds
+	call putsline
+	call disasm1	;disassemble the new instruction
+	jmp aa01		;back to next input line
+endif
 
-aag7:	jmp	aa13b		;error
+;--- Jump table for operand types.
+
+asm_jmp1 label word
+	dw aop_imm,aop_rm,aop_m,aop_r_mod	;OP_IMM, OP_RM, OP_M, OP_R_MOD
+	dw aop_moffs,aop_r,aop_r_add,aop_ax	;OP_MOFFS, OP_R, OP_R_ADD, OP_AX
+
+	dw ao17,ao17,ao17		;OP_M64, OP_MFLOAT, OP_MDOUBLE
+	dw ao17,ao17,ao17		;OP_M80, OP_MXX, OP_FARMEM
+	dw ao21,ao23,ao25		;OP_FARIMM, OP_REL8, OP_REL1632
+	dw ao29,aop_sti,aop_cr	;OP_1CHK, OP_STI, OP_CR
+	dw ao34,ao35,ao39		;OP_DR, OP_TR, OP_SEGREG
+	dw ao41,ao42,aop_mmx	;OP_IMMS8, OP_IMM8, OP_MMX
+	dw ao44,ao46,ao47		;OP_SHOSIZ, OP_1, OP_3
+	dw ao48,ao48,ao48		;OP_DX, OP_CL, OP_ST
+	dw ao48,ao48,ao48		;OP_CS, OP_DS, OP_ES
+	dw ao48,ao48,ao48		;OP_FS, OP_GS, OP_SS
+
+;   Routines to check for specific operand types.
+;   Upon success, the routine returns.
+;   Upon failure, it pops the return address and jumps to ac01.
+;   The routines must preserve si and di.
+
+;--- OP_RM, OP_M, OP_R_MOD:  form MOD R/M byte.
+
+aop_rm:
+aop_m:
+aop_r_mod:
+	call ao90		;form reg/mem byte
+	jmp ao07		;go to the size check
+
+;--- OP_R:  register.
+
+aop_r:
+	mov al,[di].OPRND.reg1	;register number
+	and al,7
+	mov cl,3
+	shl al,cl		;shift it into place
+	or [regmem],al	;put it into the reg/mem byte
+	jmp ao07		;go to the size check
+
+;--- OP_R_ADD:  register, added to the instruction.
+
+aop_r_add:
+	mov al,[di].OPRND.reg1
+	and al,7
+	mov [opcode_or],al	;put it there
+	jmp ao07		;go to the size check
+
+;--- OP_IMM:  immediate data.
+
+aop_imm:
+	mov [immaddr],di	;save the location of this
+	jmp ao07		;go to the size check
+
+;--- OP_MOFFS:  just the memory offset
+
+aop_moffs:
+	test [di].OPRND.flags,ARG_MODRM
+	jnz ao11		;if MOD R/M byte ( ==> reject)
+	mov [rmaddr],di	;save the operand pointer
+	jmp ao07		;go to the size check
+
+;--- OP_AX:  check for AL/AX/EAX
+
+aop_ax:
+	test [di].OPRND.reg1,7
+	jnz ao11		;if wrong register
+	;jmp ao07		;go to the size check
+
+;--- Size check
+
+ao07:
+	or [varflags],VAR_SIZ_NEED
+	mov al,[a_reqsize]
+	sub al,5		;OP_1632 >> 4
+	jl ao12			;if OP_ALL
+	jz ao13			;if OP_1632
+;--- OP_8=1, OP_16=2, OP_32=3, OP_64=4
+	add al,-3
+	adc al,3		;convert 3 --> 4 and 4 --> 5
+ao08:
+	or [varflags],VAR_SIZ_FORCD + VAR_SIZ_NEED
+ao08_1:
+	mov bl,[di].OPRND.sizearg
+	or bl,bl
+	jz @F			;if no size given
+	or [varflags],VAR_SIZ_GIVN
+	cmp al,bl
+	jne ao11		;if sizes conflict
+@@:
+	cmp al,[opsize]
+	je @F			;if sizes agree
+	xchg al,[opsize]
+	cmp al,0
+	jnz ao11		;if sizes disagree
+	or [varflags],VAR_SIZ_GIVN	;v1.18 added!!!
+@@:
+	ret
+
+ao11:
+	jmp ao50		;reject
+
+;--- OP_ALL - Allow all sizes.
+
+ao12:
+	mov al,[di].OPRND.sizearg
+	cmp al,1
+	je ao15			;if byte
+	jb ao14			;if unknown
+	or [opcode_or],1;set bit in instruction
+	jmp ao14		;if size is 16 or 32
+
+;--- OP_1632 - word or dword.
+
+ao13:
+	mov al,[di].OPRND.sizearg
+ao14:
+	cmp al,0
+	je ao16			;if still unknown
+	cmp al,2
+	jne @F			;if word
+	or [varflags],VAR_D16
+	jmp ao15
+@@:
+	cmp al,4
+	jne ao11		;if not dword
+	or [varflags],VAR_D32
+ao15:
+	mov [opsize],al
+	or [varflags],VAR_SIZ_GIVN
+ao16:
+	ret
+
+;   OP_M64 - 64-bit memory reference.
+;   OP_MFLOAT - single-precision floating point memory reference.
+;   OP_MDOUBLE - double-precision floating point memory reference.
+;   OP_M80 - 80-bit memory reference.
+;   OP_MXX - memory reference, size unknown.
+;   OP_FARMEM - far memory pointer
+
+ao17:
+	call ao90		;form reg/mem byte
+	mov al,[asm_siznum+bx-(OP_M64+16-2)/2]
+	jmp ao08		;check size
+
+;--- OP_FARIMM - far address contained in instruction
+
+ao21:
+	mov al,2
+if PM
+	test [bCSAttr],40h
+	jnz ao21_1
+endif
+	cmp word ptr [di].OPRND.num+2,0
+	jz ao22			;if 16 bit address
+ao21_1:
+	or [varflags],VAR_D32
+	mov al,4
+ao22:
+	mov [di].OPRND.numadd,2	;2 additional bytes (segment part)
+	mov [immaddr],di
+	mov [opsize],al			;2/4, size of offset
+ao22a:
+	mov [xxaddr],di
+	ret
+
+;--- OP_REL8 - relative address
+
+ao23:
+	mov al,9		;short
+	call aasizchk	;check the size
+	mov ax,[a_addr]	;offset
+	inc ax
+	inc ax			;$
+	mov cl,[asm_mn_flags]
+
+;--- JxCXZ, LOOPx, LOOPZx and LOOPNZx need a 67h, not a 66h prefix
+
+	test cl,AMF_D32 or AMF_D16
+	jz ao23b		;if not JxCXZ, LOOPx
+	test cl,AMF_D32
+	jz ao23a
+	or cl,AMF_A32
+ao23a:
+	and cl,not (AMF_D32 or AMF_D16)
+	or cl, AMF_ADDR
+	mov [asm_mn_flags],cl
+if PM
+	mov ch,[bCSAttr]
+	and ch,40h
+else
+	mov ch,0
+endif
+	and cl,AMF_A32
+	or cl,ch
+	jz ao23b
+	cmp cl,AMF_A32+40h
+	jz ao23b
+	inc ax
+ao23b:
+	xchg ax,bx
+	xor cx,cx
+	mov ax,word ptr [di].OPRND.num+0
+	mov dx,word ptr [di].OPRND.num+2
+	sub ax,bx
+	sbb dx,cx
+	mov byte ptr [di].OPRND.num2,al
+	mov cl,7
+	sar al,cl
+	cmp al,ah
+	jne ao24		;if too big
+	cmp ax,dx
+	jne ao24		;if too big
+	mov [di].OPRND.numadd,1	;save the length
+	jmp ao22a		;save it away
+
+;--- OP_REL1632:  relative jump/call to a longer address.
+
+ao25:
+	mov bx,[a_addr+0]
+	mov cx,[a_addr+2]
+	mov ax,3
+	cmp word ptr [a_opcode],100h	;???
+	jb @F
+	inc ax
+@@:
+	add bx,ax
+	adc cx,0
+	mov dx,word ptr [di].OPRND.num+2
+	mov al,[di].OPRND.sizearg
+	cmp al,0
+	je ao27			;if no size given
+	cmp al,10
+	je ao27			;if "long" given
+	cmp al,4
+	je ao27_1		;if the size given was "dword"
+ao24:
+	jmp ao50		;reject
+
+ao27:
+if PM
+	test [bCSAttr],40h
+	jnz ao27_1
+endif
+	or dx,dx
+	jnz ao24		;if operand is too big
+	mov al,2
+	jmp ao28
+ao27_1:
+	mov al,4
+	or [varflags],VAR_D32
+	mov ah,0
+	push ax
+	dec ax
+if PM
+	test [bCSAttr],40h
+	jz ao27_2
+	dec ax			;no prefix needed
+ao27_2:
+endif
+	add bx,ax
+	adc cx,0
+	pop ax
+ao28:
+	mov [di].OPRND.numadd,al	;store the size
+	mov ax,word ptr [di].OPRND.num+0
+	xor cx,cx
+	sub ax,bx		;compute DX:AX - CX:BX
+	sbb dx,cx
+	mov [di].OPRND.num2,ax
+	mov [di].OPRND.num2+2,dx
+	mov [xxaddr],di
+	ret
+
+;--- OP_1CHK - The assembler can ignore this one.
+
+ao29:
+	pop ax			;discard return address
+	jmp ac06		;next operand
+
+;--- OP_STI - ST(I).
+
+aop_sti:
+	mov al,REG_ST	;code for ST
+	mov bl,[di].OPRND.reg2
+	jmp ao38		;to common code
+
+;--- OP_MMX [previously was OP_ECX (used for LOOPx)]
+
+aop_mmx:
+	mov al,REG_MM
+	jmp ao37		;to common code
+
+;--- OP_CR
+
+aop_cr:
+	mov al,[di].OPRND.reg2	;get the index
+	cmp al,4
+	ja ao24			;if too big
+	jne @F			;if not CR4
+	mov [dismach],5	;CR4 is new to the 586
+@@:
+	cmp al,1
+	jne @F
+	cmp [di+sizeof OPRND].OPRND.flags,-1
+	jne ao24		;if another arg (can't mov CR1,xx)
+@@:
+	mov al,REG_CR	;code for CR
+	jmp ao37		;to common code
+
+;--- OP_DR
+
+ao34:
+	mov al,REG_DR	;code for DR
+	jmp ao37		;to common code
+
+;--- OP_TR
+
+ao35:
+	mov al,[di].OPRND.reg2	;get the index
+	cmp al,3
+	jb ao24			;if too small
+	cmp al,6
+	jae @F
+	mov [dismach],4	;TR3-5 are new to the 486
+@@:
+	mov al,REG_TR	;code for TR
+
+;--- Common code for these weird registers.
+
+ao37:
+	mov bl,[di].OPRND.reg2
+	mov cl,3
+	shl bl,cl
+ao38:
+	or [regmem],bl
+	or [varflags],VAR_MODRM
+	cmp al,[di].OPRND.reg1	;check for the right numbered register
+	je ao40			;if yes, then return
+ao38a:
+	jmp ao50		;reject
+
+;--- OP_SEGREG
+
+ao39:
+	mov al,[di].OPRND.reg1
+	sub al,24
+	cmp al,6
+	jae ao38a		;if not a segment register
+	mov cl,3
+	shl al,cl
+	or [regmem],al
+ao40:
+	ret
+
+;--- OP_IMMS8 - Sign-extended immediate byte (PUSH xx)
+
+ao41:
+	and [varflags],not VAR_SIZ_NEED	;added for v1.09. Ok?
+	mov ax,word ptr [di].OPRND.num+0
+	mov cl,7
+	sar al,cl
+	jmp ao43		;common code
+
+;--- OP_IMM8 - Immediate byte
+
+ao42:
+	mov ax,word ptr [di].OPRND.num+0
+	mov al,0
+ao43:
+	cmp al,ah
+	jne ao50		;if too big
+	cmp ax,word ptr [di].OPRND.num+2
+	jne ao50		;if too big
+	mov al,1
+	call aasizchk	;check that size == 0 or 1
+	mov ah,byte ptr [di].OPRND.num+0
+	mov word ptr [di].OPRND.numadd,ax	;store length (0/1) + the byte
+	mov [xxaddr],di
+ao43r:
+	ret
+
+;--- OP_SHOSIZ - force the user to declare the size of the next operand
+
+ao44:
+	test [varflags],VAR_SIZ_NEED
+	jz ao45			;if no testing needs to be done
+	test [varflags],VAR_SIZ_GIVN
+	jz ao50			;if size was given ( ==> reject)
+ao45:
+	and [varflags],not VAR_SIZ_GIVN	;clear the flag
+	cmp byte ptr [si],OP_IMM8
+	je ao45a		;if OP_IMM8 is next, then don't set VAR_SIZ_NEED
+	or [varflags],VAR_SIZ_NEED
+ao45a:
+	mov byte ptr [opsize],0
+	pop ax			;discard return address
+	jmp ac06		;next operand
+
+;--- OP_1
+
+ao46:
+	cmp word ptr [di+7],101h	;check both size and value
+	jmp ao49		;test it later
+
+;--- OP_3
+
+ao47:
+	cmp word ptr [di+7],301h	;check both size and value
+	jmp ao49		;test it later
+
+;--- OP_DX, OP_CL, OP_ST, OP_ES, ..., OP_GS
+
+ao48:
+	mov al,[asm_regnum+bx-(OP_DX+16-2)/2]
+ao48a:
+	cbw
+	cmp ax,word ptr [di].OPRND.reg1
+
+ao49:
+	je ao51
+
+;--- Reject this operand list.
+
+ao50:
+	pop ax			;discard return address
+	jmp ac01		;go back to try the next alternative
+
+ao51:
+	ret
+
+;--- AASIZCHK - Check that the size given is 0 or AL.
+
+aasizchk:
+	cmp [di].OPRND.sizearg,0
+	je ao51
+	cmp [di].OPRND.sizearg,al
+	je ao51
+	pop ax		;discard return address
+	jmp ao50
+
+aa endp
+
+;--- Do reg/mem processing.
+;--- in: DI->OPRND
+;--- Uses AX
+
+ao90 proc
+	test [di].OPRND.flags, ARG_JUSTREG
+	jnz ao92		;if just register
+	test [di].OPRND.flags, ARG_MODRM
+	jz @F			;if no precomputed MOD R/M byte
+	mov ax,word ptr [di].OPRND.reg1	;get the precomputed bytes
+	jmp ao93		;done
+@@:
+	mov al,6		;convert plain displacement to MOD R/M
+	test [asm_mn_flags],AMF_A32
+	jz ao93			;if 16 bit addressing
+	dec ax
+	jmp ao93		;done
+
+ao92:
+	mov al,[di].OPRND.reg1	;convert register to MOD R/M
+if 1
+	cmp al,REG_MM
+	jnz @F
+	mov al,[di].OPRND.reg2
+@@:
+endif
+	and al,7		;get low 3 bits
+	or al,0c0h
+
+ao93:
+	or word ptr [regmem],ax	;store the MOD R/M and SIB
+	or [varflags],VAR_MODRM	;flag its presence
+	mov [rmaddr],di			;save a pointer
+	ret						;done
+ao90 endp
+
+;   AAIFNUM - Determine if there's a number next.
+;   Entry   AL First character of number
+;           SI Address of next character of number
+;   Exit    CY Clear if there's a number, set otherwise.
+;   Uses    None.
+
+aaifnum proc
+	cmp al,'-'
+	je aai2			;if minus sign (carry is clear)
+	push ax
+	sub al,'0'
+	cmp al,10
+	pop ax
+	jb aai1			;if a digit
+	push ax
+	and al,TOUPPER
+	sub al,'A'
+	cmp al,6
+	pop ax
+aai1:
+	cmc				;carry clear <==> it's a number
+aai2:
+	ret
+aaifnum endp
+
+;   AAGETI - Get a number from the input line.
+;   Entry   AL First character of number
+;           SI Address of next character of number
+;   Exit    DX:BX Resulting number
+;           CL 1 if it's a byte ptr, 2 if a word, 4 if a dword
+;           AL Next character not in number
+;           SI Address of next character after that
+;   Uses    AH, CH
+
+aageti proc
+	cmp al,'-'
+	je aag1			;if negative
+	call aag4		;get the bare number
+	mov cx,1		;set up cx
+	or dx,dx
+	jnz aag2		;if dword
+	or bh,bh
+	jnz aag3		;if word
+	ret				;it's a byte
+
+aag1:
+	lodsb
+	call aag4		;get the bare number
+	mov cx,bx
+	or cx,dx
+	mov cx,1
+	jz aag1a		;if -0
+	not dx		;negate the answer
+	neg bx
+	cmc
+	adc dx,0
+	test dh,80h
+	jz aag7			;if error
+	cmp dx,-1
+	jne aag2		;if dword
+	test bh,80h
+	jz aag2			;if dword
+	cmp bh,-1
+	jne aag3		;if word
+	test bl,80h
+	jz aag3			;if word
+aag1a:
+	ret				;it's a byte
+
+aag2:
+	inc cx		;return:  it's a dword
+	inc cx
+aag3:
+	inc cx		;return:  it's a word
+	ret
+
+aag4:
+	xor bx,bx		;get the basic integer
+	xor dx,dx
+	call getnyb
+	jc aag7			;if not a hex digit
+aag5:
+	or bl,al		;add it to the number
+	lodsb
+	call getnyb
+	jc aag1a		;if done
+	test dh,0f0h
+	jnz aag7		;if overflow
+	mov cx,4
+aag6:
+	shl bx,1		;shift it by 4
+	rcl dx,1
+	loop aag6
+	jmp aag5
+
+aag7:
+	jmp cmd_error	;error
+
+aageti endp
 
 ;	AACONVINDEX - Convert results from AAGETI and store index value
-;	Entry	DX:BX,CL As in exit from AAGETI
-;		DI	Points to information record for this arg
-;	Exit	SS bits stored in [di+6]
-;	Uses	DL
+;	Entry   DX:BX,CL As in exit from AAGETI
+;	        DI Points to information record for this arg
+;	Exit    SS bits stored in [di].OPRND.index
+;	Uses    DL
 
-aaconvindex:
-	cmp	cl,1
-	jne	aacv1		;if the number is too large
-	cmp	bl,1
-	je	aacv2		;if 1
-	inc	dx
-	cmp	bl,2
-	je	aacv2		;if 2
-	inc	dx
-	cmp	bl,4
-	je	aacv2		;if 4
-	inc	dx
-	cmp	bl,8
-	je	aacv2		;if 8
-aacv1:	jmp	aa13b		;error
+aaconvindex proc
+	cmp cl,1
+	jne aacv1		;if the number is too large
+	cmp bl,1
+	je aacv2		;if 1
+	inc dx
+	cmp bl,2
+	je aacv2		;if 2
+	inc dx
+	cmp bl,4
+	je aacv2		;if 4
+	inc dx
+	cmp bl,8
+	je aacv2		;if 8
+aacv1:
+	jmp cmd_error	;error
 
-aacv2:	mov	[di+6],dl	;save the value
+aacv2:
+	mov [di].OPRND.index,dl	;save the value
 	ret
+aaconvindex endp
 
-;	AAGETREG - Get register for the assembler.
-;	Entry	DI	Start of register table
-;		CX	Length of register table
-;		SI	Address of first character in register name
-;	Exit	SI	Updated if a register was found
-;		BX	Register number, defined as in the table below.
-;	Uses	AX, CX, DI
+;   AAGETREG - Get register for the assembler.
+;   Entry   DI Start of register table
+;           CX Length of register table
+;           SI Address of first character in register name
+;   Exit    SI Updated if a register was found
+;           BX Register number, defined as in the table below.
+;   Uses    AX, CX, DI
 
-;	Exit value of BX:
-;		DI = rgnam816, CX = 27	DI = rgnam16, CX = 8
-;		----------------------	--------------------
-;		0  ..  7:  AL .. BH	0  ..  7:  AX .. DI
-;		8  .. 15:  AX .. DI	16 .. 23:  EAX..EDI
-;		16 .. 23:  EAX..EDI
-;		24 .. 29:  ES .. GS
-;		30 .. 34:  ST .. MM
+;   Exit value of BX:
+;       DI = rgnam816, CX = 27  DI = rgnam16, CX = 8
+;       ----------------------  --------------------
+;       0  ..  7:  AL .. BH     0  ..  7:  AX .. DI
+;       8  .. 15:  AX .. DI     16 .. 23:  EAX..EDI
+;       16 .. 23:  EAX..EDI
+;       24 .. 29:  ES .. GS
+;       30 .. 34:  ST .. TR
 
-aagetreg:
-	mov	ax,[si]
-	and	ax,TOUPPER_W	;convert to upper case
-	cmp	al,'E'		;check for EAX, etc.
-	jne	aagr1		;if not
-	push	ax
-	mov	al,ah
-	mov	ah,[si+2]
-	and	ah,TOUPPER
-	push	di
-	mov	di,rgnam16
-	push	cx
-	mov	cx,8
-	repne	scasw
-	mov	bx,cx
-	pop	cx
-	pop	di
-	pop	ax
-	jne	aagr1		;if no match
-	inc	si
-	not	bx
-	add	bl,8+16		;adjust BX
-	jmp	aagr2		;finish up
+aagetreg proc
+	mov ax,[si]
+	and ax,TOUPPER_W	;convert to upper case
+	cmp al,'E'			;check for EAX, etc.
+	jne aagr1			;if not
+	push ax
+	mov al,ah
+	mov ah,[si+2]
+	and ah,TOUPPER
+	push di
+	mov di,offset rgnam16
+	push cx
+	mov cx,sizeof rgnam16 / 2
+	repne scasw
+	mov bx,cx
+	pop cx
+	pop di
+	pop ax
+	jne aagr1		;if no match
+	inc si
+	not bx
+	add bl,8+16		;adjust BX
+	jmp aagr2		;finish up
 
-aagr1:	mov	bx,cx		;(if cx = 0, this is always reached with
-	repne	scasw		; ZF clear)
-	jne	aagr3		;if no match
-	sub	bx,cx
-	dec	bx
-	cmp	bl,16
-	jb	aagr2		;if AL .. BH or AX .. DI
-	add	bl,8
-aagr2:	inc	si		;skip the register name
-	inc	si
+aagr1:
+	mov bx,cx		;(if cx = 0, this is always reached with
+	repne scasw		; ZF clear)
+	jne aagr3		;if no match
+	sub bx,cx
+	dec bx
+	cmp bl,16
+	jb aagr2		;if AL .. BH or AX .. DI
+	add bl,8
+aagr2:
+	inc si			;skip the register name
+	inc si
 	clc
 	ret
-
-aagr3:	stc			;not found
+aagr3:
+	stc				;not found
 	ret
+aagetreg endp
 
-;	C command - compare bytes.
+;--- C command - compare bytes.
 
-cc:	
-	call	parsecm		;parse arguments
-%if PM    
-    cmp byte [cs:bAddr32],0
-	jz cc0_1
-    cpu 386
-    inc ecx
-    jmp cc1
-    cpu 8086
-cc0_1:
-%endif
-	inc	cx
-cc1:
-	push si		;do the interrupt pointer hack
+cc proc
+	call parsecm		;parse arguments (sets DS:e/si, ES:e/di, e/cx)
+if PM
+	cmp cs:[bAddr32],0
+	jz $+3
+	db 66h	;inc ecx
+endif
+	inc cx
+cc1:			;<--- continue compare
 	push ds
 	push es
-	push ss		;ds := cs
-	pop	ds
-	call dohack
-	pop	es
-	pop	ds
-	pop	si
-%if PM    
-    cmp byte [cs:bAddr32],0
-    jz cc1_1
-    a32 repe cmpsb
-    lahf
-    mov dl,[esi-1]
-    mov dh,[es:edi-1]
-    jmp cc1_2
-cc1_1:    
-%endif    
-	repe	cmpsb		;start comparing
+	push ss		;ds=DGROUP
+	pop ds
+	call dohack	;do the interrupt pointer hack
+	pop es
+	pop ds
+
+if PM
+	cmp cs:[bAddr32],0
+	jz $+3
+	db 67h	;repe cmpsb ds:[esi],es:[edi]
+endif
+	repe cmpsb
 	lahf
-	mov	dl,[si-1]	;save the possibly errant characters
-	mov	dh,[es:di-1]
-cc1_2:    
-	push si		;undo the interrupt pointer hack
+if PM
+	cmp cs:[bAddr32],0
+	jz $+3
+	db 67h	;mov dl,[esi-1]
+endif
+	mov dl,[si-1]	;save the possibly errant characters
+if PM
+	jz $+3
+	db 67h	;mov dh,es:[edi-1]
+endif
+	mov dh,es:[di-1]
 	push ds
 	push es
 	push ss
-	pop	ds
-	call unhack
-	pop	es
-	pop	ds
-	pop	si
+	pop ds
+	call unhack	;undo the interrupt pointer hack
+	pop es
+	pop ds
 	sahf
-	jne cc1_21
+	jne @F
 	jmp cc2		;if we're done
-cc1_21:
+@@:
 	push cx
 	push es
 	push ss
-	pop	es
-	mov	bx,di
-%if PM
-    cmp byte [cs:bAddr32],0
-    jz cc1_3
-    cpu 386
-    mov ebx,edi
-    cpu 8086
-cc1_3:
-%endif
-	mov	di,line_out
-	mov	ax,ds
+	pop es
+if PM
+	sizeprf		;mov ebx,edi
+endif
+	mov bx,di	;save [E]DI
+	mov di,offset line_out
+	mov ax,ds
 	call hexword
-	mov	al,':'
+	mov al,':'
 	stosb
-	lea	ax,[si-1]
-%if PM
-    cmp byte [cs:bAddr32],0
-    jz cc1_4
-    cpu 386
-    lea eax,[esi-1]
-    push ax
-    shr eax,16
-    call hexword
-    pop ax
-    cpu 8086
-cc1_4:    
-%endif
+if PM
+	mov bp,offset hexword
+	sizeprf
+	dec si
+	sizeprf
+	mov ax,si
+	sizeprf
+	inc si
+	cmp cs:[bAddr32],0
+	jz @F
+	mov bp,offset hexdword
+@@:
+	call bp
+else
+	lea ax,[si-1]
 	call hexword
-	mov	ax,'  '
+endif
+	mov ax,'  '
 	stosw
-	mov	al,dl
+	mov al,dl
 	call hexbyte
-	mov	ax,'  '
+	mov ax,'  '
 	stosw
-	mov	al,dh
+	mov al,dh
 	call hexbyte
-	mov	ax,'  '
+	mov ax,'  '
 	stosw
-	pop	ax
-	push	ax
+	pop ax
+	push ax
 	call hexword
-	mov	al,':'
+	mov al,':'
 	stosb
-	lea	ax,[bx-1]
-%if PM
-    cmp byte [cs:bAddr32],0
-    jz cc1_5
-    cpu 386
-    lea eax,[ebx-1]
-    push ax
-    shr eax,16
-    call hexword
-    pop ax
-    cpu 8086
-cc1_5:    
-%endif
+if PM
+	sizeprf
+	dec bx
+	sizeprf
+	mov ax,bx
+	sizeprf
+	inc bx
+	call bp
+else
+	lea ax,[bx-1]
 	call hexword
+endif
 	push ds
 	push ss
-	pop	ds
+	pop ds
 	push bx
 	call putsline
-	pop	di
-	pop	ds
-	pop	es
-	pop	cx
-%if PM    
-    cmp byte [cs:bAddr32],0
-    jz cc1_6
-    cpu 386
-    jecxz cc2
-	cpu 8086    
-    jmp cc1
-cc1_6:
-%endif
+	pop di
+	pop ds
+	pop es
+	pop cx
+if PM
+	cmp cs:[bAddr32],0
+	jz $+3
+	db 67h	;jecxz cc2
+endif
 	jcxz cc2
 	jmp cc1		;if not done yet
 cc2:
 	push ss		;restore segment registers
-	pop	ds
+	pop ds
 	push ss
-	pop	es
+	pop es
 	ret
+cc endp
 
-%if PM
+if PM
 
-descr db 'base='
+descr    db '     base='
 descbase db '         limit='
 desclim  db '         attr='
 descattr db '    ',CR,LF,'$'
-gater db 'cs:ip='
-gatecs db '    :'
-gateeip  db '        ',CR,LF,'$'
 
-descout:    
-%if NASM
-    cpu 286
-%else
-    cpu 286 protected
-%endif    
-    call skipwhite
-    call getword
-    call chkeol
-    call ispm
-    jnz errdesc
-	mov bx,dx
-    lar ax,bx
-    jnz descfailed
-    mov di,descbase
-    mov ax,6
-    int 31h
-    jc nobase
-    mov ax,cx
-    call hexword
-    mov ax,dx
-    call hexword
-    jmp desc_o1
-nobase
+gater	db 'int '
+gateno	db '   '
+		db '123456789012345678901234567890'	;max pattern is 'XXXX:XXXXXXXX XXXX:XXXXXXXX',CRLF,'$'
+
+cleardesc:
+	push di
 	mov ax,'??'
 	stosw
 	stosw
 	stosw
 	stosw
-desc_o1:    
-    mov di, desclim
-    cmp byte [machine],3
-    jb use16desc
-    cpu 386
-    lsl eax,ebx
-    rol eax,16
-    call hexword
-    shr eax,16
-    call hexword
-    lar eax,ebx
-    shr eax,8
-desc_out:    
-    mov di,descattr
-    call hexword
-    mov dx,descr
-    jmp int21ah9
-%if NASM
-    cpu 286
-%else
-    cpu 286 protected
-%endif    
-use16desc:
-	lsl ax,bx
-    call hexword
-    lar ax,bx
-    shr ax,8
-    jmp desc_out
-errdesc:
-	mov dx,nodesc
-    jmp int21ah9
-descfailed:
-	mov dx,descwrong
-    jmp int21ah9
+	add di,7
+	stosw
+	stosw
+	stosw
+	stosw
+	add di,6
+	stosw
+	stosw
+	pop di
+	ret
 
-gateout:    
-    call skipwhite
-    call getbyte
-    call chkeol
-    mov di,gatecs
+descout proc
+	.286
+	call skipwhite
+	call getword	;get word into DX
 	mov bx,dx
-    call ispm
-    jnz gaterm
-%if NASM
-    cpu 286
-%else
-    cpu 286 protected
-%endif    
-    mov ax,204h
-    int 31h
-    jc gatefailed
-    mov ax,cx
-    call hexword
-    inc di
-    cmp byte [dpmi32],0
-    jz gate16
-    cpu 386
-    mov eax,edx
-    shr eax,16
-    call hexword
-    cpu 8086
-gate16:    
-    mov ax,dx
-    call hexword
-    mov dx,gater
-    jmp int21ah9
-gaterm:
-    mov cl,2
-    shl bx,cl
-    push ds
-    xor ax,ax
-    mov ds,ax
-    mov ax,[bx+2]
-    mov dx,[bx+0]
-    pop ds
-    call hexword
-    inc di
-    jmp gate16
-gatefailed:
-	mov dx,gatewrong
-    jmp int21ah9
-%endif
-
-    cpu 8086
-
-%if MCB
-mcbout:
-%if PM
+	call skipcomm0
+	mov dx,1
+	cmp al,CR
+	jz @F
+	call getword
+	call chkeol
+	and dx,dx
+	jnz @F
+	inc dx
+@@:
+	mov si,dx		;save count
 	call ispm
-    jz mcbout_done
-%endif    
-	mov ah,52h
-    int 21h
-    mov si,[es:bx-2]
-    push ds
-    pop es
-nextmcb:    
-    mov di,line_out
-    push ds
-    mov ds,si
-    mov ch,[0000]
-    mov bx,[0001]
-    mov dx,[0003]
-    mov ax,si
-    call hexword
-    mov al,' '
-    stosb
-    mov al,ch
-    call hexbyte
-    mov al,' '
-    stosb
-    mov ax,bx
-    call hexword
-    mov al,' '
-    stosb
-    mov ax,dx
-    call hexword
-    mov al,' '
-    stosb
-    and bx,bx
-    jz mcbisfree
-    push si
-    push cx
-    mov si,8
-    mov cx,2 
-    cmp bx,si
-    jz nextmcbchar
-    mov cl,8
-    dec bx
-    mov ds,bx
-nextmcbchar:    
-    lodsb
-    stosb
-    and al,al
-    loopnz nextmcbchar
-    pop cx
-    pop si
-mcbisfree:    
-    pop ds
-    add si,dx
-    jc mcbout_done
-    inc si
-    push cx
-    call putsline	;destroys cx,dx,bx
-    pop cx
-    cmp ch,'Z'
-    jz  nextmcb
-    cmp ch,'M'
-    jz  nextmcb
+	jnz nextdesc
+	mov dx,offset nodesc
+	jmp int21ah9
+desc_done:
+	ret
+nextdesc:
+	dec si
+	js desc_done
+	mov di,offset descr
+	mov ax,bx
+	call hexword
+	mov di,offset descbase
+	call cleardesc
+;	lar ax,bx
+;	jnz skipdesc	;tell that this descriptor is invalid
+	mov ax,6
+	int 31h
+	jc @F
+	mov ax,cx
+	call hexword
+	mov ax,dx
+	call hexword
+@@:
+	mov di,offset desclim
+	sizeprf		;lsl eax,ebx
+	lsl ax,bx
+	jnz desc_out
+	sizeprf
+	lar dx,bx
+	sizeprf
+	shr dx,8
+	cmp [machine],3
+	jb @F
+	call hexdword
+	jmp desc_o2
+@@:
+	call hexword
+	mov ax,"  "
+	stosw
+	stosw
+desc_o2:
+	mov ax,dx
+	mov di,offset descattr
+	call hexword
+desc_out:
+	mov dx,offset descr
+	call int21ah9
+	add bx,8
+	jmp nextdesc
+descout endp
+
+;--- DI command
+
+gateout proc
+	call skipwhite
+	call getbyte	;get byte into DL
+	mov bx,dx
+	call skipcomm0
+	mov dx,1
+	cmp al,CR
+	jz @F
+	call getbyte	;get byte into DL
+	call chkeol
+	and dx,dx
+	jnz @F
+	inc dx			;ensure that count is > 0
+@@:
+	call prephack
+	mov si,dx		;save count
+gateout_00: 		;<--- next int/exc
+	call dohack
+	mov di,offset gateno
+	mov al,bl
+	call hexbyte
+	inc di
+	call ispm
+	jz gaterm
+	.286
+	mov ax,204h
+	cmp bl,20h
+	adc bh,1
+gateout_01:
+	int 31h
+	jc gatefailed
+	mov ax,cx
+	call hexword
+	mov al,':'
+	stosb
+	cmp [dpmi32],0
+	jz gate16
+	.386
+	shld eax,edx,16
+	call hexword
+	.8086
+gate16:
+	mov ax,dx
+	call hexword
+	mov al,' '
+	stosb
+	mov ax,0202h
+	dec bh
+	jnz gateout_01
+	mov ax,LF*256 + CR
+	stosw
+	mov al,'$'
+	stosb
+	mov dx,offset gater
+gate_exit:
+	call unhack
+	call int21ah9
+	inc bx
+	dec si
+	jnz gateout_00
+	ret
+gaterm:
+	mov cl,2
+	push bx
+	shl bx,cl
+	push ds
+	xor ax,ax
+	mov ds,ax
+	mov ax,[bx+2]
+	mov dx,[bx+0]
+	pop ds
+	pop bx
+	call hexword
+	mov al,':'
+	stosb
+	mov bh,1
+	jmp gate16
+gatefailed:
+	mov dx,offset gatewrong
+	mov si,1
+	jmp gate_exit
+gateout endp
+endif
+
+	.8086
+
+if MCB
+mcbout proc
+	mov di,offset line_out
+	mov ax,"SP"
+	stosw
+	mov ax,":P"
+	stosw
+	mov ax,[pspdbe]
+	call hexword
+	call putsline	;destroys cx,dx,bx
+
+	mov si,[wMCB]
+nextmcb:
+	mov di,offset line_out
+	push ds
+	call setds2si
+	mov ch,ds:[0000]
+	mov bx,ds:[0001]	;owner psp
+	mov dx,ds:[0003]
+	mov ax,si
+	call hexword	;segment address of MCB
+	mov al,' '
+	stosb
+	mov al,ch
+	call hexbyte	;'M' or 'Z'
+	mov al,' '
+	stosb
+	mov ax,bx
+	call hexword	;MCB owner
+	mov al,' '
+	stosb
+	mov ax,dx
+	call hexword	;MCB size in paragraphs
+	mov al,' '
+	stosb
+	and bx,bx
+	jz mcbisfree
+	push si
+	push cx
+	push dx
+	mov si,8
+	mov cx,2 
+	cmp bx,si		;is it a "system" MCB?
+	jz nextmcbchar
+	dec bx
+	call setds2bx	;destroys cx if in pm
+	mov cx,8
+nextmcbchar:		;copy "name" of owner MCB
+	lodsb
+	stosb
+	and al,al
+	loopnz nextmcbchar
+	pop dx
+	pop cx
+	pop si
+mcbisfree:
+	pop ds
+	add si,dx
+	jc mcbout_done
+	inc si
+	push cx
+	call putsline	;destroys cx,dx,bx
+	pop cx
+	cmp ch,'Z'
+	jz nextmcb
+	cmp ch,'M'
+	jz nextmcb
 mcbout_done:
 	ret
-%endif
 
-%if PM
-    cpu 386
-extmem:
-	mov dx,[x_addr+0]
-	mov bx,[x_addr+2]
-    call skipwhite
-    cmp al,CR
-    jz extmem_1
+setds2si:
+	mov bx,si
+setds2bx:
+if PM
+	call ispm
+	jz sd2s_ex
+	mov dx,bx
+	call setrmsegm
+sd2s_ex:
+endif
+	mov ds,bx
+	ret
+mcbout endp
+endif
+
+;--- DX command. Display extended memory
+
+if PM
+	.386
+extmem proc
+	mov dx,word ptr [x_addr+0]
+	mov bx,word ptr [x_addr+2]
+	call skipwhite
+	cmp al,CR
+	jz @F
 	call getdword	;get linear address into bx:dx
 	call chkeol		;expect end of line here
-extmem_1:
-	mov word [lastcmd],extmem
+@@:
+	mov [lastcmd],offset extmem
 	push bx
-    push dx
-    pop ebp
-    mov di,real_end
-    xor ax,ax
-    mov cx,8
-    rep stosw
-    mov ax,007Fh
-    stosw
-    mov ax,dx
-    stosw
-    mov al,bl
-    stosb
-    mov ax,0093h
-    stosw
-    mov al,bh
-    stosb
-    mov ax,007Fh
-    stosw
-    mov ax,line_in+128
-    mov bx,[pspdbg]
-    movzx ebx,bx
-    shl ebx,4
-    movzx eax,ax
-    add eax,ebx
-    stosw
-    shr eax,16
-    stosb
-    mov bl,ah
-    mov ax,0093h
-    stosw
-    mov al,bl
-    stosb
-    mov cx,8
-    xor ax,ax
-    rep stosw
+	push dx
+	pop ebp
+	mov di,offset real_end	;create a GDT for Int 15h, ah=87h
+	xor ax,ax
+	mov cx,24	;init 6 descriptors
+	rep stosw
+	sub di,4*8
+	mov ax,007Fh
+	stosw
+	mov ax,dx
+	stosw
+	mov al,bl
+	stosb
+	mov ax,0093h
+	stosw
+	mov al,bh
+	stosb
+	mov ax,007Fh
+	stosw
+	lea eax,[line_in+128]
+	movzx ebx,[pspdbg]
+	shl ebx,4
+	add eax,ebx
+	stosw
+	shr eax,16
+	stosb
+	mov bl,ah
+	mov ax,0093h
+	stosw
+	mov al,bl
+	stosb
 	call ispm
-    mov si,real_end
-    mov cx,0040h
-    mov ah,87h
-    jnz extmem_rm
-    push word [cs:pspdbg]
-    push 15h
-    call intcall
-    jmp i15ok
-extmem_rm:    
-    int 15h
+	mov si,offset real_end
+	mov cx,0040h
+	mov ah,87h
+	jz extmem_rm
+	push cs:[pspdbg]
+	push 15h
+	call intcall
+	jmp i15ok
+extmem_rm:
+	int 15h
 i15ok:
-    jc extmem_exit
-    mov si,line_in+128
-    mov ch,8h
-nexti15l:    
-	mov di,line_out
-    mov eax,ebp
-    shr eax,16
-	call hexword
-    mov ax,bp
-	call hexword
-    mov ax,':'
-    stosw
-    mov bx,line_out+10+3*16
-    mov cl,10h
-nexti15b:    
-    lodsb
-    mov ah,al
-    cmp al,20h
-    jnc noctrl
-    mov ah,'.'
-noctrl:    
+	jc extmem_exit
+	mov si,offset line_in+128
+	mov ch,8h
+nexti15l:
+	mov di,offset line_out
+	mov eax,ebp
+	call hexdword
+	mov ax,"  "
+	stosw
+	lea bx,[di+3*16]
+	mov cl,10h
+nexti15b:
+	lodsb
+	mov ah,al
+	cmp al,20h
+	jnc @F
+	mov ah,'.'
+@@:
 	mov [bx],ah
-    inc bx
-    push cx
-    call hexbyte
-    pop cx
-    mov al,' '
-    stosb
+	inc bx
+	call hexbyte
+	mov al,' '
+	stosb
 	dec cl
-    jnz nexti15b
-    add di,16
-    push cx
-    call putsline
-    pop cx
-    add ebp,10h
-    dec ch
-    jnz nexti15l
-    mov [x_addr],ebp
+	jnz nexti15b
+	mov byte ptr [di-(8*3+1)],'-'	;display a '-' after 8 bytes
+	mov di,bx
+	push cx
+	call putsline
+	pop cx
+	add ebp,10h
+	dec ch
+	jnz nexti15l
+	mov [x_addr],ebp
 extmem_exit:
-    ret
-	cpu 8086
-%endif
+	ret
+	.8086
+extmem endp
+endif
 
-;	D command - hex/ascii dump.
+;--- D command - hex/ascii dump.
 
-ddd:
-	cmp	al,CR
-	jne	dd1		;if an address was given
-lastddd:    
-	mov	dx,[d_addr]	;compute range of 80h or until end of segment
-	mov	si,dx
-    mov bx,[d_addr+4]
-%if PM    
-    cmp byte [machine],3
-    jb dd0_1
-    cpu 386
-    mov edx,[d_addr]
-    mov esi,edx
-    cpu 8086
-dd0_1:
-%endif
-	add	dx,7fh
-	jnc	dd2		;if no overflow
-	mov	dx,0ffffh
-	jmp	dd2
+ddd proc
+	cmp al,CR
+	jne dd1		;if an address was given
+lastddd:
+	mov bx,[d_addr+4]
+if PM
+	sizeprf		;mov edx,[d_addr]
+endif
+	mov dx,[d_addr]	;compute range of 80h or until end of segment
+if PM
+	sizeprf		;mov esi,edx
+endif
+	mov si,dx
+	add dx,7fh
+	jnc dd2		;if no overflow
+	mov dx,0ffffh
+	jmp dd2
 
 dd1:
-%if PM
-	or  al,TOLOWER
-    cmp al,'l'
-    jnz dd1_0
-    jmp  descout
-dd1_0:    
-    cmp al,'i'
-    jnz dd1_01
-    jmp  gateout
-dd1_01:   
+if PM
+	or al,TOLOWER
+	cmp al,'l'
+	jnz @F
+	jmp  descout
+@@:
+	cmp al,'i'
+	jnz @F
+if 1
+	mov ah,[si-2]		;distiguish 'd i' and 'di'
+	and ah,TOUPPER
+	cmp ah,'D'
+	jnz dd1_03
+endif
+	jmp  gateout
+@@:
 	cmp al,'x'
-    jnz dd1_02
-    cmp byte [machine],3
-    jb dd1_02
-    jmp extmem
-dd1_02:    
-%endif
-%if MCB
-    cmp al,'m'
-    jnz dd1_03
-    jmp mcbout
+	jnz @F
+	cmp [machine],3
+	jb @F
+	jmp extmem
+@@:
+endif
+if MCB
+	cmp al,'m'
+	jnz dd1_03
+	jmp mcbout
+endif
 dd1_03:
-%endif
-	mov	cx,80h		;default length
-	mov	bx,[reg_ds]
+	mov cx,80h		;default length
+	mov bx,[regs.rDS]
 	call getrangeX	;get address range into bx:(e)dx
 	call chkeol		;expect end of line here
-	mov	[d_addr+4],bx	;save segment (offset is saved later)
-	mov	si,dx
-%if PM    
-    cmp byte [machine],3
-    jb dd1_1
-    cpu 386
-    mov esi,edx
-    cpu 8086
-dd1_1:
-%endif
-	mov	dx,cx		;dx = end address
 
-;	Parsing is done.  Print first line.
+	mov [d_addr+4],bx	;save segment (offset is saved later)
+if PM
+	sizeprf		;mov esi,edx
+endif
+	mov si,dx
+	mov dx,cx		;dx = end address
+    
+	jmp dd2_1
 
-dd2:	
-	mov word [lastcmd],lastddd
-	mov	ax,[d_addr+4]
-	call hexword
-	mov	al,':'
-	stosb
-	mov	ax,si
-%if PM    
-	xor bp,bp
+;--- Parsing is done.  Print first line.
+
+dd2:
+if 0;PM
 	call ispm
-    jnz dd2_2
-    cmp byte [machine],3
-    jb dd2_2
-    push ax
-    mov ax,bx
-    call getattrhigh	;sets Z flag
-    pop ax
-    jz dd2_2
-    inc bp
-    call getesihigh
+	jz dd2_1
+	.286
+	verr bx
+	jz dd2_1
+	mov bx,[regs.rDS]
+	mov [d_addr+4],bx
+	.8086
+endif
+dd2_1:
+	mov [lastcmd],offset lastddd
+	mov ax,[d_addr+4]
 	call hexword
-    mov ax,si
-dd2_2:    
-%endif
-	and	al,0f0h
+	mov al,':'
+	stosb
+	mov ax,si
+if PM
+	xor bp,bp
+	push ax
+	call getselattr		;sets Z flag
+	pop ax
+	jz @F
+	inc bp
+	.386
+	shld eax,esi,16		;AX=HiWord(esi)
+	.8086
+	call hexword
+	mov ax,si
+@@:
+endif
+
+	and al,0f0h
 	push ax
 	call hexword
-	mov	ax,'  '
+	mov ax,'  '
 	stosw
-	pop	ax
-	lea	bx,[di+3*16]
-;	mov	byte [bx-1],' '
-	call	prehack		;set up for faking int vectors 23 and 24
+	pop ax
+	lea bx,[di+3*16]
+;	mov byte ptr [bx-1],' '
+	call prephack		;set up for faking int vectors 23 and 24
 
-dd3:	cmp	ax,si		;skip to position in line
-	je	dd4		;if we're there yet
-	push	ax
-	mov	ax,'  '
+;--- blank the start of the line if offset isn't para aligned
+
+dd3:
+	cmp ax,si			;skip to position in line
+	je dd4				;if we're there yet
+	push ax
+	mov ax,'  '
 	stosw
 	stosb
-	mov	[es:bx],al
-	inc	bx
-	pop	ax
-	inc	ax
-	jmp	dd3
+	mov es:[bx],al
+	inc bx
+	pop ax
+	inc ax
+	jmp dd3
 
-;	Begin main loop over lines of output.
+;--- Begin main loop over lines of output.
 
-dd4:	mov	cx,si
-	or	cl,0fh
-	cmp	cx,dx		;compare with end address
-	jb	dd5		;if we write to the end of the line
-	mov	cx,dx
-dd5:
-	sub	cx,si
-	inc	cx		;cx = number of bytes to print this line
-	push si
+dd4:
+	mov cx,si
+	or cl,0fh
+	cmp cx,dx		;compare with end address
+	jb @F			;if we write to the end of the line
+	mov cx,dx
+@@:
+	sub cx,si
+	inc cx			;cx = number of bytes to print this line
 	call dohack		;substitute interrupt vectors
-	pop	si
-	mov	ds,[d_addr+4]
-dd6:    
-%if PM
+	mov ds,[d_addr+4]
+dd6:
+if PM
 	and bp,bp
-    jz dd6_1
-    a32 lodsb
-    jmp dd6_2
-dd6_1:
-%endif
+	jz $+3
+	db 67h			;lods [esi] 
+endif
 	lodsb
-dd6_2:    
-	push	ax
-	push	cx
+	push ax
 	call hexbyte
-	pop	cx
-	mov	al,' '
+	mov al,' '
 	stosb
-	pop	ax
-	cmp	al,' '
-	jb	dd7		;if control character
-	cmp	al,'~'
-	jbe	dd8		;if printable
-dd7:	mov	al,'.'
-dd8:	mov	[es:bx],al
-	inc	bx
-	loop	dd6
-    
-dd9:	test	si,0fh		;space out till end of line
-	jz	dd10
-	mov	ax,'  '
+	pop ax
+	cmp al,' '
+	jb dd7		;if control character
+	cmp al,'~'
+	jbe dd8		;if printable
+dd7:
+	mov al,'.'
+dd8:
+	mov es:[bx],al
+	inc bx
+	loop dd6
+
+dd9:
+	test si,0fh		;space out till end of line
+	jz dd10
+	mov ax,'  '
 	stosw
 	stosb
-	inc	si
-	jmp	dd9
+	inc si
+	jmp dd9
 
 dd10:
 	push ss		;restore ds
-	pop	ds
-	mov	[d_addr],si
-%if PM
-    cmp byte [machine],3
-    jb dd10_1
-    cpu 386
-    mov [d_addr],esi
-    cpu 8086
-dd10_1:    
-%endif    
-	mov	byte [di-25],'-'
-	push si
+	pop ds
+if PM
+	sizeprf		;mov [d_addr],esi
+endif
+	mov [d_addr],si
+	mov byte ptr [di-25],'-'
 	call unhack
-	pop	si
-	mov	di,bx
+	mov di,bx
 	push dx
 	call putsline
-	pop	dx
-	dec	si
-	cmp	si,dx
-	jae	dd11		;if we're done
-	inc	si
-%if 0    
-	mov	di,line_out+5	;set up for next time
-	mov	ax,si
+	pop dx
+	dec si
+	cmp si,dx
+	jae dd11		;if we're done
+	inc si
+if 0
+	mov di,offset line_out+5	;set up for next time
+	mov ax,si
 	call hexword
-	inc	di
-	inc	di
-	lea	bx,[di+50]
-	jmp	dd4
-%else
-	mov di,line_out
-    mov bx,[d_addr+4]
+	inc di
+	inc di
+	lea bx,[di+50]
+	jmp dd4
+else
+	mov di,offset line_out
+	mov bx,[d_addr+4]
 	jmp dd2
-%endif
-dd11:	inc	dx		;set up the address for the next 'D' command.
-	mov	[d_addr],dx
+endif
+dd11:
+	inc dx		;set up the address for the next 'D' command.
+	mov [d_addr],dx
 	ret
+ddd endp
 
-errorj4:jmp	error
+errorj4:
+	jmp cmd_error
 
-;	E command - edit memory.
+;--- E command - edit memory.
 
-ee:	
-	call prehack
-	mov	bx,[reg_ds]
-	call getaddr		;get address into bx:dx
+ee proc
+	call prephack
+	mov bx,[regs.rDS]
+	call getaddr	;get address into bx:(e)dx
 	call skipcomm0
-	cmp	al,CR
-	je	ee1		;if prompt mode
-	push dx
+	cmp al,CR
+	je ee1			;if prompt mode
+	push dx			;save destination offset
 	call getstr		;get data bytes
-	mov	cx,di
-	mov	dx,line_out
-	sub	cx,dx		;length of byte string
-	pop	di
-	mov	ax,cx
-	dec	ax
-	add	ax,di
-	jc	errorj4		;if it wraps around
+	mov cx,di
+	mov dx,offset line_out
+	sub cx,dx		;length of byte string
+	pop di
+	mov ax,cx
+	dec ax
+	add ax,di
+	jc errorj4		;if it wraps around
 	call dohack
-	mov	si,dx
-	mov	es,bx
-	rep	movsb
+	mov si,dx
+	mov es,bx
+if PM
+	cmp [bAddr32],0
+	jz @F
+	.386
+	mov dx,di		;dx was destroyed
+	mov edi,edx
+	movzx esi,si
+	movzx ecx,cx
+	db 67h		;rep movsb [edi], [esi]
+	.8086
+@@:
+endif
+	rep movsb
 
-;	Restore ds and es and undo the interrupt vector hack.
-;	This code is also used by the `m' command.
+;--- Restore ds + es and undo the interrupt vector hack.
+;--- This code is also used by the `m' command.
 
-ee0a:
+ee0a::
+	push ss			;restore ds
+	pop ds
 	push ss			;restore es
-	pop	es
-	mov	di,run2324
-	call prehak1	;copy things back and restore ds
+	pop es
+	mov di,offset run2324	;debuggee's int 23/24 values
+	call prehak1	;copy things back
 	call unhack
 	ret
 
-;	Prompt mode.
+;--- Prompt mode.
 
 ee1:
-	xchg bx,dx
 
-;	Begin loop over lines.
+;--- Begin loop over lines.
 
-ee2:
-	mov	ax,dx		;print out segment and offset
+ee2:				;<--- next line
+	mov ax,bx		;print out segment and offset
 	call hexword
-	mov	al,':'
+	mov al,':'
 	stosb
-	mov	ax,bx
-	call hexword
+	mov bp,offset hexword
+if PM
+	cmp [bAddr32],0
+	jz @F
+	mov bp,offset hexdword
+	db 66h	;mov eax,edx
+@@:
+endif
+	mov ax,dx
+	call bp
 
-;	Begin loop over bytes.
+;--- Begin loop over bytes.
 
-ee3:	
-	mov	ax,'  '		;print old value of byte
+ee3:				;<--- next byte
+	mov ax,'  '		;print old value of byte
 	stosw
 	call dohack		;do the INT pointer hack
-	mov	es,dx
-	mov	al,[es:bx]
-	call unhack		;undo the INT pointer hack and restore es.
-	call hexbyte
-	mov	al,'.'
-	stosb
-	push dx		;save dx
 	push bx
+	call readmem	;read mem at BX:(E)DX
+	pop bx
+	call unhack		;undo the INT pointer hack
+	call hexbyte
+	mov al,'.'
+	stosb
+	push bx
+	push dx
 	call puts
-	pop	bx
-	mov	si,line_out+16	;address of buffer for characters
-	xor	cx,cx		;number of characters so far
+	pop dx
+	pop bx
+	mov si,offset line_out+16	;address of buffer for characters
+	xor cx,cx		;number of characters so far
 
 ee4:
-	cmp	byte [notatty],0
-	jz	ee9		;if it's a tty
+	cmp [notatty],0
+	jz ee9			;if it's a tty
 	push si
-	mov	di,line_in+2
-	mov	si,[bufnext]
+	mov di,offset line_in+2
+	mov si,[bufnext]
 ee5:
-	cmp	si,[bufend]
-	jb	ee6		;if there's a character already
+	cmp si,[bufend]
+	jb ee6			;if there's a character already
 	call fillbuf
-	mov	al,CR
-	jc	ee8		;if eof
+	mov al,CR
+	jc ee8			;if eof
 ee6:
-	cmp	byte [notatty],CR
-	jne	ee7		;if no need to compress CR/LF
-	cmp	byte [si],LF
-	jne	ee7		;if not a line feed
-	inc	si		;skip it
-	inc	byte [notatty]	;avoid repeating this
-	jmp	ee5		;next character
+	cmp [notatty],CR
+	jne ee7			;if no need to compress CR/LF
+	cmp byte ptr [si],LF
+	jne ee7			;if not a line feed
+	inc si			;skip it
+	inc [notatty]	;avoid repeating this
+	jmp ee5			;next character
 
 ee7:
-	lodsb		;get the character
-	mov	[notatty],al
+	lodsb			;get the character
+	mov [notatty],al
 ee8:
-	mov	[bufnext],si
-	pop	si
-	jmp	ee10
+	mov [bufnext],si
+	pop si
+	jmp ee10
 
 ee9:
-	mov	ah,8	;console input without echo
-	int	21h
+	mov ah,8		;console input without echo
+	int 21h
 
 ee10:
-	cmp	al,' '
-	je	ee13	;if done with this byte
-	cmp	al,CR
-	je	ee13	;ditto
-	cmp	al,BS
-	je	ee11	;if backspace
-	cmp	al,'-'
-	je	ee112	;if '-'
-	cmp	cx,2	;otherwise, it should be a hex character
-	jae	ee4		;if we have a full byte already
-	mov	[si],al
+	cmp al,' '
+	je ee13			;if done with this byte
+	cmp al,CR
+	je ee13			;ditto
+	cmp al,BS
+	je ee11			;if backspace
+	cmp al,'-'
+	je ee112		;if '-'
+	cmp cx,2		;otherwise, it should be a hex character
+	jae ee4			;if we have a full byte already
+	mov [si],al
 	call getnyb
-	jc ee4		;if it's not a hex character
-	inc	cx
-	lodsb		;get the character back
-	jmp	ee12
+	jc ee4			;if it's not a hex character
+	inc cx
+	lodsb			;get the character back
+	jmp ee12
 ee112:
 	call stdoutal
-    dec bx
-    pop dx
-	mov	di,line_out
-    jmp ee15
+	dec dx			;decrement offset part
+	mov di,offset line_out
+	jmp ee15
 ee11:
-	jcxz ee4	;if nothing to backspace over
-	dec	cx
-	dec	si
-    call fullbsout
-    jmp ee4
+	jcxz ee4		;if nothing to backspace over
+	dec cx
+	dec si
+	call fullbsout
+	jmp ee4
 ee12:
 	call stdoutal
-	jmp	ee4		;back for more
+	jmp ee4			;back for more
 
-;	We have a byte (if CX != 0).
+;--- We have a byte (if CX != 0).
 
-ee13:	
-	jcxz ee14	;if no change for this byte
-	mov	[si],al	;terminate the string
-	sub	si,cx	;point to beginning
+ee13:
+	jcxz ee14		;if no change for this byte
+	mov [si],al		;terminate the string
+	sub si,cx		;point to beginning
 	push cx
+	push dx
 	lodsb
-	call getbyte;convert byte to binary
-	pop	cx
-	call dohack	;do the INT pointer hack
-	pop	ds		;get segment register
-	mov	[bx],dl	;save the byte
-	push ds		;segment back on the stack
-	mov	di,run2324
-	call prehak1;copy things back and restore ds
-	call unhack	;undo the INT pointer hack
+	call getbyte	;convert byte to binary (DL)
+	mov al,dl
+	pop dx
+	pop cx
+	call dohack		;do the INT pointer hack
+	call writemem	;write AL at BX:(E)DX
+	mov di,offset run2324	;debuggee's int 23/24
+	call prehak1	;copy things back
+	call unhack		;undo the INT pointer hack
 
-;	End the loop over bytes.
+;--- End the loop over bytes.
 
 ee14:
-	inc	bx		;next word
-	pop	dx		;restore dx
-	mov	di,line_out
-	cmp	al,CR
-	je	ee16		;if done
-	test bl,7
-	jz	ee15		;if new line
-	not	cx
-	add	cx,4		;compute 3 - cx
-	mov	al,' '
-	rep	stosb		;store that many spaces
-	jmp	ee3		;back for more
+	inc dx			;increment offset
+	mov di,offset line_out
+	cmp al,CR
+	je ee16			;if done
+	test dl,7
+	jz ee15			;if new line
+	not cx
+	add cx,4		;compute 3 - cx
+	mov al,' '
+	rep stosb		;store that many spaces
+	jmp ee3			;back for more
 
 ee15:
-	mov	ax,LF * 256 + CR;terminate this line
+	mov ax,LF * 256 + CR;terminate this line
 	stosw
-	jmp	ee2		;back for a new line
+	jmp ee2			;back for a new line
 
 ee16:
-	jmp	putsline	;call putsline and return
+	jmp putsline	;call putsline and return
+ee endp
 
-;	F command - fill memory
+;--- F command - fill memory
 
-ff:	xor	cx,cx		;get address range (no default length)
-	mov	bx,[reg_ds]
-	call	getrange
-%if PM
-	cmp byte [bAddr32],0
-    jz  ff_0
-    cpu 386
-    sub ecx,edx
-    inc ecx
-    push ecx
-    push edx
-    cpu 8086
-    jmp ff_01
-ff_0:    
-%endif
-	sub	cx,dx
-	inc	cx		;cx = number of bytes
-	push	cx		;save it
-	push	dx		;save start address
-ff_01:
-	call	skipcomm0
-	call	getstr		;get string of bytes
-	mov	cx,di
-	sub	cx,line_out
-%if PM
-	cmp byte [bAddr32],0
-    jz	ff_1
-    cpu 386
-    pop edi
-    mov es,bx
-    cmp ecx,1
-    je  ff3_32
-    pop eax
-    cdq
-    div ecx
-    or  eax,eax
-    jz  ff2_32
-ff1_32:
-	mov	esi,line_out
+ff proc
+	xor cx,cx		;get address range (no default length)
+	mov bx,[regs.rDS]
+	call getrange	;get address range into bx:(e)dx/(e)cx
+if PM
+	cmp [bAddr32],0
+	jz ff_0
+	.386
+	sub ecx,edx
+	inc ecx
 	push ecx
-	a32 rep	movsb
-	pop	ecx
-	dec	eax
-	jnz	ff1_32
+	push edx
+	.8086
+	jmp ff_01
+ff_0:
+endif
+	sub cx,dx
+	inc cx		;cx = number of bytes
+	push cx		;save it
+	push dx		;save start address
+ff_01:
+	call skipcomm0
+	call getstr		;get string of bytes
+	mov cx,di
+	sub cx,offset line_out
+if PM
+	cmp [bAddr32],0
+	jz ff_1
+	.386
+	pop edi
+	mov es,bx
+	cmp ecx,1
+	je ff3_32
+	pop eax
+	cdq
+	div ecx
+	or eax,eax
+	jz ff2_32
+ff1_32:
+	mov esi,offset line_out
+	push ecx
+	rep movsb es:[edi], ds:[esi]
+	pop ecx
+	dec eax
+	jnz ff1_32
 ff2_32:
-	mov	ecx,edx
-	jecxz ff4		;if no partial copies
-	mov	si,line_out
-	a32 rep	movsb
-	jmp	ff4		;done (almost)
+	mov ecx,edx
+	jecxz ff_exit		;if no partial copies
+	mov si,offset line_out
+	rep movsb es:[edi], ds:[esi]
+	jmp ff_exit		;done (almost)
 ff3_32:
 	pop ecx
-    mov al,[line_out]
-    a32 rep stosb
-    jmp ff4
-    cpu 8086
-ff_1:    
-%endif
-	pop	di
-	mov	es,bx
-	cmp	cx,1
-	je	ff3		;a common optimization
-	pop	ax
-	xor	dx,dx
-	div	cx		;compute number of whole repetitions
-	or	ax,ax
-	jz	ff2		;if less than one whole rep
+	mov al,byte ptr [line_out]
+	rep stosb es:[edi]
+	jmp ff_exit
+	.8086
+ff_1:
+endif
+	pop di
+	mov es,bx
+	cmp cx,1
+	je ff3		;a common optimization
+	pop ax		;get size
+	xor dx,dx	;now size in DX:AX
+	cmp ax,1
+	adc dx,0	;convert 0000:0000 to 0001:0000
+	div cx		;compute number of whole repetitions
+	or ax,ax
+	jz ff2		;if less than one whole rep
 ff1:
-	mov	si,line_out
+	mov si,offset line_out
 	push cx
-	rep	movsb
-	pop	cx
-	dec	ax
-	jnz	ff1		;if more to go
+	rep movsb
+	pop cx
+	dec ax
+	jnz ff1		;if more to go
 ff2:
-	mov	cx,dx
-	jcxz ff4		;if no partial copies
-	mov	si,line_out
-	rep	movsb
-	jmp	ff4		;done (almost)
+	mov cx,dx
+	jcxz ff_exit;if no partial copies
+	mov si,offset line_out
+	rep movsb
+	jmp ff_exit	;done (almost)
 ff3:
-	pop	cx
-	mov	al,[line_out]
-	rep	stosb
-ff4:
+	pop cx
+	mov al,byte ptr [line_out]
+	stosb		;cx=0 -> 64 kB
+	dec cx
+	rep stosb
+ff_exit:
 	push ss		;restore es
-	pop	es
+	pop es
 	ret
+ff endp
 
-;	G command - go.
+;--- G command - go.
 
-gg:	xchg	ax,bx		;mov bx,ax
-	mov	ax,[reg_cs]	;save original CS
-	mov	[run_cs],ax
-	mov	[eqladdr+4],ax
-	xchg	ax,bx		;mov ax,bx
-	call	parseql		;process =addr
-	mov	di,line_out+2
-	mov	[di-2],si	;save si
+gg proc
+	xchg ax,bx		;mov bx,ax
+	mov ax,[regs.rCS]	;save original CS
+	mov [run_cs],ax
+	mov [eqladdr+4],ax
+	xchg ax,bx		;mov ax,bx
+	call parseql	;get optional <=addr> argument
+	mov di,offset line_out+2
+	mov [di-2],si	;save si
 
-;	Parse the rest of the line to make sure there are no errors.
+;--- Parse the rest of the line to make sure there are no errors.
 
-gg1:	call	skipcomm0
-	cmp	al,CR
-	je	gg2		;if end of line
-	call	getaddr
-	jmp	gg1		;back for more
+@@:
+	call skipcomm0
+	cmp al,CR		;end of line?
+	je @F
+	call getaddr	;get address into bx:(e)dx
+	jmp @B			;next bp
+@@:
 
-;	Store breakpoint bytes in the given locations.
+;--- Store breakpoint bytes in the given locations.
 
-gg2:	mov	si,[di-2]
-gg3:	dec	si
-	call	skipcomma
-	cmp	al,CR
-	je	gg4		;if done
-	mov	bx,[eqladdr+4]	;default segment
-	call	getaddr		;get address into bx:dx
-	mov	ds,bx
-	mov	bx,dx
-	mov	al,0cch		;INT 3 instruction
-	xchg	al,[bx]	;put it there
-    push ss			;restore DS
-	pop	ds
-	stosb			;save the old contents
-	jmp	gg3		;back for more
+	mov si,[di-2]
+@@:
+	dec si
+	call skipcomma
+	cmp al,CR		;done?
+	je @F
+	mov bx,[eqladdr+4]	;default segment
+	call getaddr	;get address into bx:(e)dx
+	mov al,0cch		;INT 3 instruction
+	call writemem
+	stosb			;save the old contents in output buffer
+	jmp @B			;next bp
+@@:
 
-;	Now run the program.
+	call run		;run the program
+if PM
+	call getcsattr
+	mov [bCSAttr],al
+endif
+	mov cx,-1
+	call getcseipbyte	;get byte at [cs:eip-1]
+	push ax
 
-gg4:	
-	call	seteq		;make the = operand take effect
-	call	run
+;--- Restore breakpoint bytes.
 
-;	Restore breakpoint bytes.
+	mov di,offset line_out+2
+	mov si,[di-2]
+@@:
+	dec si
+	call skipcomma
+	cmp al,CR		;done?
+	je @F
+	mov bx,[run_cs]	;default segment
+	call getaddr	;get address into bx:(e)dx
+	mov al,[di]		;get old contents
+	inc di
+	cmp al,0cch		;this is because of possible duplicate values
+	je @B			;if it was INT 3 originally
+	call writemem	;write AL to BX:(E)DX
+	jmp @B			;next bp
+@@:
+	pop ax
 
-	mov	di,line_out+2
-	mov	si,[di-2]
-gg5:	dec	si
-	call	skipcomma
-	cmp	al,CR
-	je	gg6		;if done
-	mov	bx,[run_cs]	;default segment
-	call	getaddr		;get address into bx:dx
-	mov	al,[di]		;get old contents
-	inc	di
-	cmp	al,0cch		;this is because of possible duplicate values
-	je	gg5		;if it was INT 3 originally
-	mov	ds,bx
-	mov	bx,dx
-	mov	[bx],al	;restore value
-	push ss		;restore DS
-	pop	ds
-	jmp	gg5		;back for more
+;--- Finish up.  Check if it was one of _our_ breakpoints.
 
-;	Finish up.  Check if it was one of _our_ breakpoints.
-
-gg6:	cmp	word [run_int],int3msg
-	jne	gg9		;if not CC interrupt
-	dec	word [reg_ip]
-	mov	si,[line_out]	;loop over the set breakpoints
-gg7:	dec	si
-	call	skipcomma
-	cmp	al,CR
-	je	gg8		;if done
-	mov	bx,[run_cs]	;default segment
-	call	getaddr		;get address into bx:dx
-    push ds
-    mov ds,bx
-    mov bx,dx
-    cmp [ds:bx],byte 0CCh
-    pop ds
-    je gg7
-
-;	It's one of ours.
-
-	call	dumpregs
+	cmp al,0CCh
+	jnz gg9
+	cmp [run_int],offset int3msg
+	jne gg9			;if not CC interrupt
+	mov cx,-1
+	call getcseipbyte
+	cmp al,0CCh
+	jz gg9
+if PM
+	test [bCSAttr],40h
+	jz $+3
+	db 66h		;mov [regs.rIP],ebx
+endif
+	mov [regs.rIP],bx
+	call dumpregs	;It's one of ours
 	ret
+gg9:
+	jmp ue_int		;print messages and quit.
+gg endp
 
-;	It's not.
+;--- H command - hex addition and subtraction.
 
-gg8:	inc	word [reg_ip]
-gg9:	jmp	tt2		;print messages and quit.
-
-;	H command - hex addition and subtraction.
-
-hh:	call	getdword
-	push	bx
-	push	dx
-	call	skipcomm0
-	call	getdword
-	call	chkeol		;expect end of line here
-    pop		cx
-    pop		ax			;first value in AX:CX, second in BX:DX
-    mov		si,ax
-    or		si,bx
-    jnz		hh32		;32bit values
-	mov	ax,cx
-	add	ax,dx
-    push cx
+hh proc
+	call getdword	;get dword in BX:DX
+	push bx
+	push dx
+	call skipcomm0
+	call getdword
+	call chkeol		;expect end of line here
+	pop cx
+	pop ax			;first value in AX:CX, second in BX:DX
+if 0
+	mov si,ax
+	or si,bx
+	jnz hh32		;32bit values
+	mov ax,cx
+	add ax,dx
+	push cx
 	call hexword
-    pop cx
-	mov	ax,'  '
+	pop cx
+	mov ax,'  '
 	stosw
-	mov	ax,cx
-	sub	ax,dx
+	mov ax,cx
+	sub ax,dx
 	call hexword
 	call putsline
 	ret
+endif
 hh32:
 	mov si,ax
-    mov bp,cx			;first value in SI:BP now
-	mov	ax,cx
-	add	ax,dx
-    push ax
-    mov ax,si
-    adc ax,bx
+	mov bp,cx			;first value in SI:BP now
+	mov ax,cx
+	add ax,dx
+	push ax
+	mov ax,si
+	adc ax,bx
+	jz @F
 	call hexword
-    pop ax
-    call hexword
-	mov	ax,'  '
+@@:
+	pop ax
+	call hexword
+	mov ax,'  '
 	stosw
-	mov	ax,bp
-	sub	ax,dx
-    push ax
-    mov ax,si
-    sbb ax,bx
+	mov ax,bp
+	sub ax,dx
+	push ax
+	mov ax,si
+	sbb ax,bx
+	jz @F
+	or si,bx
+	jz @F
 	call hexword
-    pop ax
-    call hexword
+@@:
+	pop ax
+	call hexword
 	call putsline
 	ret
+hh endp
 
-;	I command - input from I/O port.
+;--- I command - input from I/O port.
 
-ii:
+ii proc
 	mov bl,0
-    mov ah,al
+	mov ah,al
 	and ah,TOUPPER
 	cmp ah,'W'
-    jne ii_1
-    inc bx
-    call skipwhite
-    jmp ii_2
-ii_1:
-    cmp [machine],byte 3
-    jb  ii_2
+	je ii_1
+	cmp [machine],3
+	jb ii_2
 	cmp ah,'D'
-    jne ii_2
-%if 1    
-    mov ah,[si-2]		;distiguish 'id' and 'i d'
-    and ah,TOUPPER
-    cmp ah,'I'
-    jnz ii_2
-%endif    
-    inc bx
-    inc bx
-    call skipwhite
+	jne ii_2
+if 1
+	mov ah,[si-2]		;distiguish 'id' and 'i d'
+	and ah,TOUPPER
+	cmp ah,'I'
+	jnz ii_2
+endif
+	inc bx
+ii_1:
+	inc bx
+	call skipwhite
 ii_2:
-	call	getword		;get word into DX
-	call	chkeol		;expect end of line here
-    cmp bl,1
-    jz ii_3
-    cmp bl,2
-    jz ii_4
-	in	al,dx
+	call getword		;get word into DX
+	call chkeol			;expect end of line here
+	cmp bl,1
+	jz ii_3
+	cmp bl,2
+	jz ii_4
+	in al,dx
 	call hexbyte
-    jmp ii_5
+	jmp ii_5
 ii_3:
 	in ax,dx
 	call hexword
-    jmp ii_5
+	jmp ii_5
 ii_4:
-	cpu 386
+	.386
 	in eax,dx
-    push ax
-    shr eax,16
-	call hexword
-    pop ax
-	call hexword
-    cpu 8086
-ii_5:    
+	.8086
+	call hexdword
+ii_5:
 	call putsline
-iiret:	ret
+	ret
+ii endp
 
-errorj5:jmp	error
+if PM
+ispm proc
+	cmp byte ptr cs:[regs.msw],0
+	ret
+ispm endp
+endif
 
-%if PM
-ispm:
-	push ax
-	mov ax,1686h
-    int 2Fh
-    and ax,ax
-    pop ax
-    ret
-%endif
-
-setpsp:
+setpspdbg:		;<--- activate debugger's PSP
+	mov bx,cs	;if format is changed to MZ, this must be changed as well!
+	
+setpsp proc
 	mov ah,50h
-%if PM
+if PM
 	call ispm
-    jnz setpsp_rm
-%if NOEXTENDER
-    cpu 286
+	jz setpsp_rm
+if NOEXTENDER
+	.286
 	push cx
-    push dx
-    push bx
-    push ax
+	push dx
+	push bx
+	push ax
 	mov ax,6
-    int 31h
-    pop ax
-    shl cx,12
-    shr dx,4
-    or dx,cx
-    mov bx,dx
-    call doscallx
-    pop bx
-    pop dx
-    pop cx
-    ret
-    cpu 8086
-%else    
-	jmp doscall_rm
-%endif
-setpsp_rm:
-%endif
-
-%if USESDA
-	cmp word [pSDA+2],0
-    jz doscall_rm
-    push ds
-    push si
-    lds si,[pSDA]
-    mov [si+10h],bx
-    pop si
-    pop ds
-    ret
-%else
-	jmp doscall_rm
-%endif
-    
-getpsp:
-	mov ah,51h
-%if PM    
-	call ispm
-    jnz getpsp_rm
-%if NOEXTENDER
-    call doscallx
-    mov ax,2
-    int 31h
-    mov bx,ax
-    ret
-%else    
-    jmp doscall_rm
-%endif
-getpsp_rm:    
-%endif
-
-%if USESDA
-	cmp word [pSDA+2],0
-    jz doscall_rm
-    push ds
-    push si
-    lds si,[pSDA]
-    mov bx,[si+10h]
-    pop si
-    pop ds
-    ret
-%else
-	jmp doscall_rm
-%endif
-
-doscall:    
-%if NOEXTENDER
-	call ispm
-    jnz doscall_rm
-    cpu 286
-doscallx:
-    push word [cs:pspdbg]
-	push 21h
-    call intcall
-    ret
-    cpu 8086
-%endif
-doscall_rm:    
-	int	21h
-    ret
-
-%if PM
-intcall:    
-    cmp byte [cs:dpmi32],0
-    jz intcall_pm16
-    cpu 386
-    movzx edi,di
-    cpu 8086
-intcall_pm16:    
-    push bp
-    sub sp,32h
-    mov bp,sp
-    push es
-    push ss
-    pop es
-    mov [bp+00h],di
-    mov [bp+04h],si
-    mov [bp+10h],bx
-    mov [bp+14h],dx
-    mov [bp+18h],cx
-    mov [bp+1Ch],ax
-    mov ax,[bp+32h]
-    mov [bp+08h],ax		;bp
-    xor ax,ax
-    mov [bp+20h],ax     ;flags
-    mov [bp+2Eh],ax		;sp
-    mov [bp+30h],ax		;ss
-    mov ax,[bp+38h]		;usually [cs:pspdbg]
-    mov [bp+22h],ax     ;es
-    mov [bp+24h],ax     ;ds
-    mov di,bp
-    mov bx,[bp+36h]		;int#
-    xor cx,cx
-    mov ax,0300h
-    int 31h
-    mov ah,[bp+20h]
-    lahf
-    mov di,[bp+00h]
-    mov si,[bp+04h]
-    mov bx,[bp+10h]
-    mov dx,[bp+14h]
-    mov cx,[bp+18h]
-    mov ax,[bp+1Ch]
-    pop es
-    lea bp,[bp+32h]
-    mov sp,bp
-    pop bp
-    ret 4
-%endif    
-
-%if PM
-isextenderavailable:
-    push ds
-    push es
-    push ax
-    push si
-	push di
-	mov si,szMSDOS
-    cmp byte [machine],3
-    jb iea_1
-    cpu 386
-    movzx esi,si
-    cpu 8086
-iea_1:
-	push cs
-    pop ds
-    mov ax,168ah
-    int 2Fh
-    cmp al,1
-    cmc
-    pop di
-    pop si
-    pop ax
-    pop es
-    pop ds
-    ret
-szMSDOS:
-	db "MS-DOS",0
-nodosextinst:
-	mov dx,nodosext
-    jmp int21ah9
-%endif
-
-isdebuggeeloaded:    
-	mov		ax,[pspdbe]
-    cmp		ax,[pspdbg]
-    ret
-    
-;--- ensure a debuggee is loaded
-;--- set SI:DI to CS:IP, preserve AX, BX, DX
-    
-ensuredebuggeeloaded:
-    push ax
-	call isdebuggeeloaded
-    jnz ll5_2
-    push bx
-    push dx
-    call createdummytask
-    mov si,[reg_cs]
-    mov di,[reg_ip]
+	int 31h
+	pop ax
+	shl cx,12
+	shr dx,4
+	or dx,cx
+	mov bx,dx
+	call doscallx
+	pop bx
 	pop dx
-    pop bx
-ll5_2:
-    pop ax
+	pop cx
+	ret
+	.8086
+else
+	jmp doscall_rm
+endif
+setpsp_rm:
+endif
+
+if USESDA
+	cmp word ptr [pSDA+2],0
+	jz doscall_rm
+	push ds
+	push si
+	lds si,[pSDA]
+	mov [si+10h],bx
+	pop si
+	pop ds
+	ret
+else
+	jmp doscall_rm
+endif
+setpsp endp
+
+getpsp proc
+	mov ah,51h
+if PM
+	call ispm
+	jz getpsp_rm
+if NOEXTENDER
+	call doscallx
+	mov ax,2
+	int 31h
+	mov bx,ax
+	ret
+else
+	jmp doscall_rm
+endif
+getpsp_rm:
+endif
+
+if USESDA
+	cmp word ptr [pSDA+2],0
+	jz doscall_rm
+	push ds
+	lds bx,[pSDA]
+	mov bx,[bx+10h]
+	pop ds
+	ret
+else
+	jmp doscall_rm
+endif
+getpsp endp
+
+doscall:
+if NOEXTENDER
+	call ispm
+	jz doscall_rm
+	.286
+doscallx:
+	push cs:[pspdbg]
+	push 21h
+	call intcall
+	ret
+	.8086
+endif
+doscall_rm:
+	int 21h
 	ret
 
-;	L command - read a program, or disk sectors, from disk.
+if PM
 
-ll:	
-	call parselw;parse it
-	jz	ll1		;if request to read program
-%if NOEXTENDER
+RMCS struc		;the DPMI "real-mode call structure"
+rDI		dw ?,?	;+0
+rSI		dw ?,?	;+4
+rBP		dw ?,?	;+8
+		dw ?,?	;+12
+rBX 	dw ?,?	;+16
+rDX 	dw ?,?	;+20
+rCX		dw ?,?	;+24
+rAX		dw ?,?	;+28
+rFlags	dw ?	;+32
+rES 	dw ?	;+34
+rDS 	dw ?	;+36
+rFS 	dw ?	;+38
+rGS 	dw ?	;+40
+rIP 	dw ?	;+42
+rCS 	dw ?	;+44
+rSP 	dw ?	;+46
+rSS 	dw ?	;+48
+RMCS ends
+
+	.286
+
+intcall proc stdcall uses es intno:word, dataseg:word
+
+local rmcs:RMCS
+
+	push ss
+	pop es
+	mov rmcs.rDI,di
+	mov rmcs.rSI,si
+	mov rmcs.rBX,bx
+	mov rmcs.rDX,dx
+	mov rmcs.rCX,cx
+	mov rmcs.rAX,ax
+	mov ax,[bp+0]
+	mov rmcs.rBP,ax
+	xor cx,cx
+	mov rmcs.rFlags,cx
+	mov rmcs.rSP,cx
+	mov rmcs.rSS,cx
+	mov ax,dataseg
+	mov rmcs.rES,ax
+	mov rmcs.rDS,ax
+	sizeprf	;lea edi,rmcs
+	lea di,rmcs
+	mov bx,intno
+	mov ax,0300h
+	int 31h
+	mov ah,byte ptr rmcs.rFlags
+	lahf
+	mov di,rmcs.rDI
+	mov si,rmcs.rSI
+	mov bx,rmcs.rBX
+	mov dx,rmcs.rDX
+	mov cx,rmcs.rCX
+	mov ax,rmcs.rAX
+	ret
+intcall endp
+	.8086
+endif
+
+if PM
+
+;--- this proc is called in pmode only
+;--- DS is unknown!
+
+isextenderavailable proc
+	.286
+	push ds
+	push es
+	pusha
+	push ss
+	pop ds
+	sizeprf		;lea esi, szMSDOS
+	lea si, szMSDOS	;must be LEA, don't change to "mov si,offset szMSDOS"!
+	mov ax,168ah
+	int 2Fh
+	cmp al,1
+	cmc
+	popa
+	pop es
+	pop ds
+	ret
+	.8086
+szMSDOS:
+	db "MS-DOS",0
+isextenderavailable endp
+
+nodosextinst:
+	push ss
+	pop ds
+	mov dx,offset nodosext
+	jmp int21ah9
+endif
+
+isdebuggeeloaded:
+	mov ax,[pspdbe]
+	cmp ax,[pspdbg]
+	ret
+
+;--- ensure a debuggee is loaded
+;--- set SI:DI to CS:IP, preserve AX, BX, DX
+
+ensuredebuggeeloaded proc
+	push ax
+	call isdebuggeeloaded
+	jnz ll5_2
+	push bx
+	push dx
+	call createdummytask
+	mov si,[regs.rCS]
+	mov di,[regs.rIP]
+	pop dx
+	pop bx
+ll5_2:
+	pop ax
+	ret
+ensuredebuggeeloaded endp
+
+;--- L command - read a program, or disk sectors, from disk.
+
+ll proc
+	call parselw	;parse it, addr in bx:(e)dx
+	jz ll1			;if request to read program
+if NOEXTENDER
 	call ispm
-    jnz ll0_rm
-    call isextenderavailable
-    jc nodosextinst
-ll0_rm:    
-%endif
-	cmp [cs:usepacket],byte 2
-    jb  ll0_1
-    mov dl,al
-    inc dl
-    mov si,0
-    mov ax,7305h	;DS:BX -> packet
-    stc
-    int 21h			;use int 21h here, not doscall!
-    jmp ll0_2
+	jz @F
+	call isextenderavailable
+	jc nodosextinst
+@@:
+endif
+	cmp cs:[usepacket],2
+	jb ll0_1
+	mov dl,al		;A=0,B=1,C=2,...
+	xor si,si		;read drive
+if VDD
+	mov ax,[hVdd]
+	cmp ax,-1
+	jnz callvddread
+endif
+	inc dl			;A=1,B=2,C=3,...
+	mov ax,7305h	;DS:(E)BX -> packet
+	stc
+	int 21h			;use int 21h here, not doscall!
+	jmp ll0_2
+if VDD
+callvddread:
+	mov cx,5
+	add cl,[dpmi32]
+	DispatchCall
+	jmp ll0_2
+endif
 ll0_1:
-	int	25h
+	int 25h
 ll0_2:
-	mov	dx,reading
-	jmp	ww1
+	mov dx,offset reading
+	jmp ww1
 
-;	For .com or .exe files, we can only load at cs:100.  Check that first.
+;--- For .com or .exe files, we can only load at cs:100.  Check that first.
 
 ll1:
-	test	byte [fileext],EXT_COM+EXT_EXE
-	jz	ll4		;if not .com or .exe file
-	cmp	bx,[reg_cs]
-	jne	ll2		;if segment is wrong
-	cmp	dx,100h
-	je	ll4		;if address is OK (or not given)
+	test [fileext], EXT_COM or EXT_EXE
+	jz loadfile		;if not .com or .exe file
+	cmp bx,[regs.rCS]
+	jne ll2			;if segment is wrong
+	cmp dx,100h
+	je loadfile		;if address is OK (or not given)
 ll2:
-	jmp	error		;can only load .com or .exe at cs:100
+	jmp cmd_error	;can only load .com or .exe at cs:100
 
-;	load (any) file (if not .EXE or .COM, load at BX:DX)
+ll endp
 
-ll3:
-	cmp	byte [fileext],0
-    jnz ll4
-	jmp	iiret
+;--- load (any) file (if not .EXE or .COM, load at BX:DX)
+;--- open file and get length
 
-;	open file and get length
-
-ll4:
-	mov	si,bx		;save destination address, segment
-	mov	di,dx		;and offset
-	mov	ax,3d00h	;open file for reading
-	mov	dx,DTA
+loadfile proc
+	mov si,bx		;save destination address, segment
+	mov di,dx		;and offset
+	mov ax,3d00h	;open file for reading
+	mov dx,DTA
 	call doscall
-	jnc	ll5		;if no error
-	jmp	ll16		;error
-ll5:
+	jnc @F			;if no error
+	jmp io_error	;print error message
+@@:
 	xchg ax,bx		;mov bx,ax
-	mov	ax,4202h	;lseek
-	xor	cx,cx
-	xor	dx,dx
-	int	21h
+	mov ax,4202h	;lseek EOF
+	xor cx,cx
+	xor dx,dx
+	int 21h
 
-;	Split off file types
-;	At this point:
-;		bx	file handle
-;		dx:ax	file length
-;		si:di	load address (CS:100h for .EXE or .COM)
+;   Split off file types
+;   At this point:
+;       bx      file handle
+;       dx:ax   file length
+;       si:di   load address (CS:100h for .EXE or .COM)
 
-	test	byte [fileext],EXT_COM | EXT_EXE
-	jnz	ll13		;if .com or .exe file
+	test [fileext],EXT_COM or EXT_EXE
+	jnz loadpgm		;if .com or .exe file
 
-%if PM
-;--- dont load a file in protected mode, 
+if PM
+;--- dont load a file in protected mode,
 ;--- the read loop makes some segment register arithmetic
 	call ispm
-    jnz ll5_1
-    mov dx,nopmsupp
-    call int21ah9
-    jmp ll12
-ll5_1:
-%endif
+	jz @F
+	mov dx,offset nopmsupp
+	call int21ah9
+	jmp ll12
+@@:
+endif
 
-;	Load it ourselves.
-;	For non-.com/.exe files, we just do a read, and set BX:CX to the
-;	number of bytes read.
-	
+;--- Load it ourselves.
+;--- For non-.com/.exe files, we just do a read, and set BX:CX to the
+;--- number of bytes read.
+
 	call ensuredebuggeeloaded	;make sure a debuggee is loaded
 	mov es,[pspdbe]
 
-;	Check the size against available space.
+;--- Check the size against available space.
 
-	push	si
-	push	bx
+	push si
+	push bx
 
-	cmp	si,[es:ALASAP]
+	cmp si,es:[ALASAP]
 	pushf
-	neg	si
+	neg si
 	popf
-	jae	ll6		;if loading past end of mem, allow through ffff
-	add	si,[es:ALASAP]	;si = number of paragraphs available
+	jae ll6				;if loading past end of mem, allow through ffff
+	add si,es:[ALASAP]	;si = number of paragraphs available
 ll6:
-	mov	cx,4
-	xor	bx,bx
+	mov cx,4
+	xor bx,bx
 ll7:
-	shl	si,1
-	rcl	bx,1
-	loop	ll7
-	sub	si,di
-	sbb	bx,cx  	;bx:si = number of words left
-	jb	ll9		;if already we're out of space
-	cmp	bx,dx
-	jne	ll8
-	cmp	si,ax
-ll8:
-	jae	ll10		;if not out of space
+	shl si,1
+	rcl bx,1
+	loop ll7
+	sub si,di
+	sbb bx,cx  		;bx:si = number of words left
+	jb ll9			;if already we're out of space
+	cmp bx,dx
+	jne @F
+	cmp si,ax
+@@:
+	jae ll10		;if not out of space
 ll9:
-	pop	bx		;out of space
-	pop	si
-	mov	dx,doserr8	;not enough memory
-	call	int21ah9	;print string
-	jmp	ll12
+	pop bx			;out of space
+	pop si
+	mov dx,offset doserr8	;not enough memory
+	call int21ah9	;print string
+	jmp ll12
 
 ll10:
-	pop	bx
-	pop	si
+	pop bx
+	pop si
 
-;	Store length in registers
+;--- Store length in registers
 
-; seems a bit unwise to modify registers if a debuggee is running 
-; but MS DEBUG does it as well
+;--- seems a bit unwise to modify registers if a debuggee is running 
+;--- but MS DEBUG does it as well
 
-%if 0
-	mov cx,[reg_cs]
-    cmp cx,[pspdbe]
-    jnz noregmodify
-    cmp word [reg_ip],100h
-    jnz noregmodify
-%endif    
-	mov	[reg_bx],dx
-	mov	[reg_cx],ax
+if 0
+	mov cx,[regs.rCS]
+	cmp cx,[pspdbe]
+	jnz noregmodify
+	cmp [regs.rIP],100h
+	jnz noregmodify
+endif
+	mov [regs.rBX],dx
+	mov [regs.rCX],ax
 noregmodify:    
 
-;	Rewind the file
+;--- Rewind the file
 
-	mov	ax,4200h	;lseek
-	xor	cx,cx
-	xor	dx,dx
-	int	21h
+	mov ax,4200h	;lseek
+	xor cx,cx
+	xor dx,dx
+	int 21h
 
-	mov	dx,0fh
-	and	dx,di
-	mov	cl,4
-	shr	di,cl
-	add	si,di		;si:dx is the address to read to
+	mov dx,0fh
+	and dx,di
+	mov cl,4
+	shr di,cl
+	add si,di		;si:dx is the address to read to
 
-;	Begin loop over chunks to read
+;--- Begin loop over chunks to read
 
-ll11:	
-	mov	ah,3fh		;read from file into DS:(E)DX
-	mov	cx,0fe00h	;read up to this many bytes
-	mov	ds,si
+ll11:
+	mov ah,3fh		;read from file into DS:(E)DX
+	mov cx,0fe00h	;read up to this many bytes
+	mov ds,si
 	int 21h
     
-	add	si,0fe0h	;wont work in protected-mode!
-	cmp	ax,cx
-	je	ll11		;if end of file reached
+	add si,0fe0h	;wont work in protected-mode!
+	cmp ax,cx
+	je ll11			;if end of file reached
 
-;	Close the file and finish up.
+;--- Close the file and finish up.
 
 ll12:
-	mov	ah,3eh		;close file
-	int	21h
-	push ss		;restore ds
-	pop	ds
-	ret			;done
+	mov ah,3eh		;close file
+	int 21h
+	push ss			;restore ds
+	pop ds
+	ret				;done
 
-ll13:
+loadfile endp
 
-;   file is .EXE or .COM
-;	Close the file
+setespefl proc
+	sizeprf		;pushfd
+	pushf
+	sizeprf		;pop dword ptr [regs.rFL]
+	pop [regs.rFL]
+	sizeprf		;mov dword ptr [regs.rSP],esp
+	mov [regs.rSP],sp	;low 16bit of ESP will be overwritten
+	ret
+setespefl endp
+
+loadpgm proc
+
+;--- file is .EXE or .COM
+;--- Close the file
 
 	push ax
-	mov	ah,3eh		;close file
-	int	21h
-	pop	bx		;dx:bx is the file length
+	mov ah,3eh		;close file
+	int 21h
+	pop bx			;dx:bx is the file length
 
-%if 1
+if 1
 
-;	adjust .exe size by 200h (who knows why)
+;--- adjust .exe size by 200h (who knows why)
 
-	test	byte [fileext],EXT_EXE
-	jz	ll14		;if not .exe
-	sub	bx,200h
-	sbb	dx,0
-%endif
+	test [fileext],EXT_EXE
+	jz @F		;if not .exe
+	sub bx,200h
+	sbb dx,0
+@@:
+endif
 
-;	Clear registers
-
-ll14:
-    push bx
-    push dx
-;	mov	[reg_bx],dx
-;	mov	[reg_cx],bx
+	push bx
+	push dx
 
 ;--- cancel current process (unless there is none)
 ;--- this will also put cpu back in real-mode!!!
 
-	call	isdebuggeeloaded
-    jz		notask
-	call	freemem	
-notask:
+	call isdebuggeeloaded
+	jz @F
+	call freemem
+@@:
 
-	mov di, regs
-    mov cx, 16*2	;(8 std, 6 seg, ip, fl) * 2
-    xor ax, ax
-    rep stosw
-    
-	pop word [reg_bx]
-    pop word [reg_cx]
+;--- Clear registers
 
-;	Fix up interrupt vectors in PSP
+	mov di, offset regs
+	mov cx, sizeof regs / 2
+	xor ax, ax
+	rep stosw
 
-	mov	si,CCIV		;address of original INT 23 and 24 (in PSP)
-	mov	di,run2324
+	pop word ptr [regs.rBX]
+	pop word ptr [regs.rCX]
+
+;--- Fix up interrupt vectors in PSP
+
+	mov si,CCIV		;address of original INT 23 and 24 (in PSP)
+	mov di,offset run2324
 	movsw
 	movsw
 	movsw
 	movsw
 
-;	Actual program loading.  Use the DOS interrupt.
+;--- Actual program loading.  Use the DOS interrupt.
 
-	mov	ax,4b01h	;load program
-	mov	dx,DTA		;offset of file to load
-	mov	bx,execblk	;parameter block
-	int	21h		;load it
-	jnc ll14_1
-	jmp ll16		;if error
-ll14_1:
-	mov	ax,sp
-	sub	ax,[SPSAV]
-	cmp	ax,80h
-	jb	ll15		;if in range
-	mov	ax,80h
-ll15:	mov	[spadjust],ax
-	les	si,[execblk+14]
-	es lodsw		;recover ax
-	mov	[reg_ax],ax
-	mov	[reg_sp],si
-	mov	[reg_ss],es
-	les	si,[execblk+18]
-	mov	[reg_ip],si
-	mov	[reg_cs],es
-    mov byte [bInit],0
-	push cs
-	pop	es
-    clc
-    pushf
-    pop word [reg_fl]
-    call getpsp
-	xchg	ax,bx		;mov ax,bx
-	mov	[pspdbe],ax
-	mov	di,reg_ds
-	stosw
-	stosw			;reg_es
-	mov	bx,cs
-    call setpsp
+	mov ax,4b01h	;load program
+	mov dx,DTA		;offset of file to load
+	mov bx,offset execblk	;parameter block
+	int 21h			;load it
+	jnc @F
+	jmp io_error	;if error
+@@:
+	call setespefl
 
-;	Finish up.  Set termination address.
-
-	mov	ax,2522h	;set interrupt vector 22
-	mov	dx,int22
-	int	21h
-	mov	ds,[pspdbe]
-	mov	word [TPIVOFS],int22
-	mov	[TPIVSEG],cs
-	push cs
-	pop	ds
-
-;	Set up initial addresses for 'a', 'd', and 'u' commands.
-
-adusetup:
-	mov	ax,[reg_ip]
-    mov cx,[regh_eip]
-	mov	bx,[reg_cs]
-	mov	di,a_addr
-	stosw				;IP
-    mov [di],cx
-    add di,2
-	xchg	ax,bx
-	stosw				;CS
-	xchg	ax,bx		;d_addr
-	stosw				;IP
-    mov [di],cx
-    add di,2
-	xchg	ax,bx
-	stosw				;CS
-	xchg	ax,bx		;u_addr
-	stosw				;IP
-    mov [di],cx
-    add di,2
-	xchg	ax,bx
-	stosw				;CS
-	ret
-
-;	Error messages.  Print and quit.
-
-ll16:
-	call	ww15		;print error message
-	ret
-
-
-
-;	M command - move from place to place.
-
-mm:
-	push	si		;scan for comma or 'l'
-m1:	cmp	al,','
-	je	m2		;if comma found
-	cmp	al,CR
-	je	m5		;if end of string
-	or	al,TOLOWER
-	cmp	al,'l'
-	je	m2		;if 'l' found
-	lodsb
-	jmp	m1		;loop back
-
-;	Normal 'm' command (move).
-
-m2:	pop	si
-	dec	si
-	lodsb
-	call parsecm		;parse arguments
-	push cx
-%if PM    
-    call ispm
-    jnz m2_1
-;--- TODO: do this check in protected-mode    
+	mov ax,sp
+	sub ax,ds:[SPSAV]
+	cmp ax,80h
+	jb @F			;if in range
+	mov ax,80h
+@@:
+	mov [spadjust],ax
+	les si,dword ptr [execblk.sssp]
+	lodsw es:[si]	;recover ax
+	mov [regs.rAX],ax
+	mov [regs.rSP],si
+	mov [regs.rSS],es
+	les si,dword ptr [execblk.csip]
+	mov [regs.rIP],si
+	mov [regs.rCS],es
+	mov [bInit],0
+	push ss
+	pop es
 	clc
-    jmp m3
-m2_1:    
-%endif    
-	mov	cl,4
-	shr	dx,cl
-	add	dx,bx		;upper 16 bits of destination
-	mov	ax,si
-	shr	ax,cl
-	mov	bx,ds
-	add	ax,bx
-	cmp	ax,dx
-	jne	m3		;if we know which is larger
-	mov	ax,si
-	and	al,0fh
-	mov	bx,di
-	and	bl,0fh
-	cmp	al,bl
-m3:	pop	cx
+
+	call getpsp
+	xchg ax,bx		;mov ax,bx
+	mov [pspdbe],ax
+	mov di,offset regs.rDS
+	stosw
+	stosw			;regs.rES
+	call setpspdbg
+
+;--- Finish up.  Set termination address.
+
+	mov ax,2522h	;set interrupt vector 22
+	mov dx,offset int22
+	int 21h
+	mov ds,[pspdbe]
+	mov word ptr ds:[TPIV+0],offset int22
+	mov word ptr ds:[TPIV+2],cs
+	push ss
+	pop ds
+
+;--- Set up initial addresses for 'a', 'd', and 'u' commands.
+
+setup_adu::
+	mov di,offset a_addr
+	mov si,offset regs.rIP
+	push di
+	movsw
+	movsw
+	mov ax,[regs.rCS]
+	stosw
+	pop si
+	mov cx,3*2
+	rep movsw
+	ret
+
+loadpgm endp
+
+;--- M command - move/copy memory.
+
+;--- first check if there is more than 1 argument
+;--- 0 or 1 arguments are handled by the 'M [cpu]' code
+;--- also check if command is MC, MC2 or MNC
+
+mmm proc
+	cmp al,CR
+	jz mach
+	mov ah,[si-2]
+	or ah,TOLOWER
+	cmp ah,'m'
+	jz mach
+	push si
+	call getdword
+	cmp al,CR
+	jz @F
+	call skipwhite
+@@:
+	pop si
+	cmp al,CR
+	je mach				; jump if 1 argument only
+	dec si
+	lodsb
+	call parsecm		;parse arguments (DS:(E)SI, ES:(E)DI, (E)CX)
+	push cx
+if PM
+	call ispm
+	jz @F
+;--- TODO: do overlapping check in protected-mode
+	clc
+	jmp m3
+@@:
+endif
+	mov cl,4
+	shr dx,cl
+	add dx,bx		;upper 16 bits of destination
+	mov ax,si
+	shr ax,cl
+	mov bx,ds
+	add ax,bx
+	cmp ax,dx
+	jne m3		;if we know which is larger
+	mov ax,si
+	and al,0fh
+	mov bx,di
+	and bl,0fh
+	cmp al,bl
+m3:
+	pop cx
 	lahf
-	push si		;do the interrupt pointer hack
 	push ds
 	push es
 	push ss		;ds := cs
-	pop	ds
-	call dohack
-	pop	es
-	pop	ds
-	pop	si
-%if PM
-	cmp byte [cs:bAddr32],0
-    jz m3_1
-    cpu 386
-    sahf
-    jae m4_32
-    add esi,ecx
-    add edi,ecx
-    std
-m4_32:
-	a32 rep movsb
-    a32 movsb
-    cld
-    jmp ee0a
-    cpu 8086
-m3_1:    
-%endif
+	pop ds
+	call dohack	;do the interrupt pointer hack
+	pop es
+	pop ds
+if PM
+	cmp cs:[bAddr32],0
+	jz m3_1
+	.386
 	sahf
-	jae	m4		;if forward copy is OK
-	add	si,cx
-	add	di,cx
+	jae @F
+	add esi,ecx
+	add edi,ecx
 	std
-m4:	
-	rep	movsb		;do the move
+@@:
+	rep movsb es:[edi], ds:[esi]
+	movsb es:[edi], ds:[esi]
+	cld
+	jmp ee0a
+	.8086
+m3_1:
+endif
+	sahf
+	jae @F			;if forward copy is OK
+	add si,cx
+	add di,cx
+	std
+@@:
+	rep movsb		;do the move
 	movsb			;one more byte
 	cld				;restore flag
-	jmp	ee0a		;restore ds and es and undo the int pointer hack
+	jmp ee0a		;restore ds and es and undo the int pointer hack
+mmm endp
 
-;	Other 'm' command:  set machine type.
+;--- 'mc' command:  set coprocessor.
+;--- optional arguments:
+;--- N: no coprocessor
+;--- 2: 80287 with 80386
 
-m5:	pop	si
-	dec	si
+mc proc
+	call skipwhite	;get next nonblank character
+	mov ah,[machine]
+	cmp al,CR
+	jz set_mpc
+	or al,TOLOWER
+	push ax
 	lodsb
-	cmp	al,CR
-	je	m10		;if just an 'm' (query machine type)
-	cmp	al,'?'
-	je	m10		;if '?' (also query)
-	cmp	al,'0'
-	jb	m6		;if not a digit
-	cmp	al,'6'
-	ja	m6		;ditto
-	sub	al,'0'
-	mov	[machine],al	;set machine type
-	mov	[mach_87],al	;coprocessor type, too
-    cmp al,3
-    jnc m5_1
-	and [regsdmp],byte ~1	;reset 386 register display
-m5_1:    
+	call chkeol
+	pop ax
+	cmp al,'n'
+	jne @F			;if something else
+	mov [has_87],0	;clear coprocessor flag
+	ret				;done
+@@:
+	cmp al,'2'
+	jne errorj3		;if not '2'
+	cmp [machine],3
+	jnz errorj3		;if not a 386
+	mov ah,2
+set_mpc:
+	mov [has_87],1	;set coprocessor flag
+	mov [mach_87],ah
 	ret
+mc endp
 
-m6:	or	al,TOLOWER
-	cmp	al,'c'
-	je	m7		;if coprocessor declaration
-	cmp	al,'n'
-	jne	errorj3		;if something else
-	lodsb
-	or	al,TOLOWER
-	cmp	al,'c'
-	jne	errorj3		;if not 'c' after that
-	lodsb
-	call	chkeol
-	mov	byte [has_87],0	;clear coprocessor flag
-	ret			;done
+errorj3:
+	jmp cmd_error
 
-m7:	call skipwhite	;get next nonblank character
-	mov	ah,[machine]
-	cmp	ah,3
-	jb	m9		;if not a 386
-	cmp	al,'3'
-	je	m8		;if declaring a 387
-	cmp	al,'2'
-	jne	m9		;if not '2'
-	mov	ah,2
-m8:
+;--- 'm'achine command:  set machine type.
+
+mach proc
+	or al,TOLOWER
+	cmp al,'c'
+	jz mc
+	dec si
 	call skipwhite
-m9:	cmp	al,CR
-	jne	errorj3		;if not end of line
-	mov	byte [has_87],1	;set coprocessor flag
-	mov	[mach_87],ah	;set copr. type
+	cmp al,CR
+	je ma1				;if just an 'm' (query machine type)
+	call getbyte
+	mov al,dl
+	cmp al,6
+	ja errorj3			;dl must be 0-6
+	mov [machine],al	;set machine type
+	mov [mach_87],al	;coprocessor type, too
+	cmp al,3
+	jnc @F
+	and [rmode],not RM_386REGS	;reset 386 register display
+@@:
 	ret
 
-;	Display machine type.
+;--- Display machine type.
 
-m10:	mov	si,msg8088
-	mov	al,[machine]
-	cmp	al,0
-	je	m11		;if 8088
-	mov	si,msgx86
-	add	al,'0'
-	mov	[si],al
-m11:	call	showstring
-	mov	si,no_copr
-	cmp	byte [has_87],0
-	je	m12		;if no coprocessor
-	mov	si,has_copr
-	mov	al,[mach_87]
-	cmp	al,[machine]
-	je	m12		;if has coprocessor same as processor
-	mov	si,has_287
-m12:	call	showstring	;show string
-	jmp	putsline	;call puts and quit
+ma1:
+	mov si,offset msg8088
+	mov al,[machine]
+	cmp al,0
+	je @F		;if 8088
+	mov si,offset msgx86
+	add al,'0'
+	mov [si],al
+@@:
+	call showstring
+	mov si,offset no_copr
+	cmp [has_87],0
+	je @F		;if no coprocessor
+	mov si,offset has_copr
+	mov al,[mach_87]
+	cmp al,[machine]
+	je @F		;if has coprocessor same as processor
+	mov si,offset has_287
+@@:
+	call showstring
+	jmp putsline	;call puts and quit
+mach endp
 
-errorj3:jmp	error
+;--- N command - change the name of the program being debugged.
 
-;	N command - change the name of the program being debugged.
+exts label byte
+	db ".HEX",EXT_HEX
+	db ".EXE",EXT_EXE
+	db ".COM",EXT_COM
 
-nn:	mov	di,DTA		;destination address
+nn proc
+	mov di,DTA		;destination address
 
-;	Copy and canonicalize file name.
+;--- Copy and canonicalize file name.
 
-nn1:	cmp	al,CR
-	je	nn3		;if end of line
-	call	ifsep		;check for separators space, TAB, comma, ;, =
-	je	nn3		;if end of file name
-	cmp	al,[swch1]
-	je	nn3		;if '/' (and '/' is the switch character)
-	cmp	al,'a'
-	jb	nn2		;if not lower case
-	cmp	al,'z'
-	ja	nn2		;ditto
-	and	al,TOUPPER	;convert to upper case
-nn2:	stosb
+nn1:
+	cmp al,CR
+	je nn3		;if end of line
+	call ifsep	;check for separators space, TAB, comma, ;, =
+	je nn3		;if end of file name
+	cmp al,[swch1]
+	je nn3		;if '/' (and '/' is the switch character)
+	cmp al,'a'
+	jb @F		;if not lower case
+	cmp al,'z'
+	ja @F		;ditto
+	and al,TOUPPER	;convert to upper case
+@@:
+	stosb
 	lodsb
-	jmp	nn1		;back for more
+	jmp nn1		;back for more
 
-nn3:	mov	al,0		;null terminate the file name string
+nn3:
+	mov al,0		;null terminate the file name string
 	stosb
-	mov	[execblk+2],di	;save start of command tail
+	mov word ptr [execblk.cmdtail],di	;save start of command tail
 
-;	Determine file extension
+;--- Determine file extension
 
-	cmp	di,DTA+1
-	je	nn3d		;if no file name at all
-	cmp	di,85h
-	jb	nn3c		;if no extension (name too short)
-	mov	al,EXT_HEX
-	cmp	word [di-5],'.H'
-	jne	nn3a		;if not .HEX
-	cmp	word [di-3],'EX'
-	je	nn3d		;if .HEX
-nn3a:	mov	al,EXT_EXE
-	cmp	word [di-5],'.E'
-	jne	nn3b		;if not .EXE
-	cmp	word [di-3],'XE'
-	je	nn3d		;if .EXE
-nn3b:	mov	al,EXT_COM
-	cmp	word [di-5],'.C'
-	jne	nn3c		;if not .COM
-	cmp	word [di-3],'OM'
-	je	nn3d		;if .COM
-nn3c:	mov	al,EXT_OTHER
-nn3d:	mov	[fileext],al
+	push di
+	push si
+	cmp di,DTA+1
+	je nn3d			;if no file name at all
+	cmp di,DTA+5
+	jb nn3c			;if no extension (name too short)
+	lea dx,[di-5]
+	mov bx,offset exts
+	mov cx,3
+@@:
+	push cx
+	mov si,bx
+	mov di,dx
+	add bx,5
+	mov cl,4
+	repz cmpsb
+	mov al,[si]
+	pop cx
+	jz nn3d
+	loop @B
+nn3c:
+	mov al,EXT_OTHER
+nn3d:
+	mov [fileext],al
+	pop si
 
-;	Finish the N command
+;--- Finish the N command
 
-	push	di
-	mov	di,line_out
-	dec	si
-nn4:	lodsb			;copy the remainder to line_out
+	mov di,offset line_out
+	push di
+	dec si
+@@:
+	lodsb			;copy the remainder to line_out
 	stosb
-	cmp	al,CR
-	jne	nn4
+	cmp al,CR
+	jne @B
+	pop si
 
-;	Set up FCBs.
+;--- Set up FCBs.
 
-	mov	si,line_out
-	mov	di,5ch
-	call	nn6		;do first FCB
-	mov	byte [reg_ax],al
-	mov	di,6ch
-	call	nn6		;second FCB
-	mov	byte [reg_ax+1],al
+	mov di,5ch
+	call DoFCB		;do first FCB
+	mov byte ptr [regs.rAX+0],al
+	mov di,6ch
+	call DoFCB		;second FCB
+	mov byte ptr [regs.rAX+1],al
 
-;	Copy command tail.
+;--- Copy command tail.
 
-	mov	si,line_out
-	pop	di
-	push	di
-	inc	di
-nn5:	lodsb
+	mov si,offset line_out
+	pop di
+	push di
+	inc di
+@@:
+	lodsb
 	stosb
-	cmp	al,CR
-	jne	nn5		;if not end of string
-	pop	ax		;recover old DI
-	xchg	ax,di
-	sub	ax,di		;compute length of tail
-	dec	ax
-	dec	ax
+	cmp al,CR
+	jne @B		;if not end of string
+	pop ax		;recover old DI
+	xchg ax,di
+	sub ax,di	;compute length of tail
+	dec ax
+	dec ax
 	stosb
-	ret			;done
+	ret
 
-;	Subroutine to process an FCB.
+nn endp
 
-nn6:	lodsb
-	cmp	al,CR
-	je	nn7		;if end
-	call	ifsep
-	je	nn6		;if separator
-	cmp	al,[switchar]
-	je	nn10		;if switch character
-nn7:	dec	si
-	mov	ax,2901h	;parse filename
+;--- Subroutine to process an FCB.
+;--- di->FCB
+
+DoFCB proc
+@@:
+	lodsb
+	cmp al,CR
+	je nn7		;if end
+	call ifsep
+	je @B		;if separator
+	cmp al,[switchar]
+	je nn10		;if switch character
+nn7:
+	dec si
+	mov ax,2901h;parse filename
 	call doscall
-	push	ax		;save AL
-nn8:	lodsb			;skip till separator
-	cmp	al,CR
-	je	nn9		;if end
-	call	ifsep
-	je	nn9		;if separator character
-	cmp	al,[swch1]
-	jne	nn8		;if not switchar (sort of)
-nn9:	dec	si
-	pop	ax		;recover AL
-	cmp	al,1
-	jne	nn9a		;if not 1
-	dec	ax
-nn9a:	ret
+	push ax		;save AL
+@@:
+	lodsb		;skip till separator
+	cmp al,CR
+	je @F		;if end
+	call ifsep
+	je @F		;if separator character
+	cmp al,[swch1]
+	jne @B		;if not switchar (sort of)
+@@:
+	dec si
+	pop ax		;recover AL
+	cmp al,1
+	jne @F		;if not 1
+	dec ax
+@@:
+	ret
 
-;	Handle a switch (differently).
+;--- Handle a switch (differently).
 
-nn10:	lodsb
-	cmp	al,CR
-	je	nn7		;if end of string
-	call	ifsep
-	je	nn10		;if another separator
-	mov	al,0
-	stosb
-	dec	si
+nn10:
 	lodsb
-	cmp	al,'a'
-	jb	nn11		;if not a lower case letter
-	cmp	al,'z'
-	ja	nn11
-	and	al,TOUPPER	;convert to upper case
-nn11:	stosb
-	mov	ax,'  '
+	cmp al,CR
+	je nn7		;if end of string
+	call ifsep
+	je nn10		;if another separator
+	mov al,0
+	stosb
+	dec si
+	lodsb
+	cmp al,'a'
+	jb @F		;if not a lower case letter
+	cmp al,'z'
+	ja @F
+	and al,TOUPPER	;convert to upper case
+@@:
+	stosb
+	mov ax,'  '
 	stosw
 	stosw
 	stosw
 	stosw
 	stosw
-	xor	ax,ax
+	xor ax,ax
 	stosw
 	stosw
 	stosw
 	stosw
 	ret			;return with AL=0
+DoFCB endp
 
-;	O command - output to I/O port.
+;--- O command - output to I/O port.
 
-oo:
+oo proc
 	mov bl,0
-    mov ah,al
+	mov ah,al
 	and ah,TOUPPER
 	cmp ah,'W'
-    jne oo_1
-    inc bx
-    call skipwhite
-    jmp oo_2
-oo_1:
-    cmp [machine],byte 3
-    jb  oo_2
+	je oo_1
+	cmp [machine],3
+	jb oo_2
 	cmp ah,'D'
-    jne oo_2
-%if 1    
-    mov ah,[si-2]		;distiguish 'od' and 'o d'
-    and ah,TOUPPER
-    cmp ah,'O'
-    jnz oo_2
-%endif    
-    inc bx
-    inc bx
-    call skipwhite
+	jne oo_2
+if 1
+	mov ah,[si-2]		;distiguish 'od' and 'o d'
+	and ah,TOUPPER
+	cmp ah,'O'
+	jnz oo_2
+endif
+	inc bx
+oo_1:
+	inc bx
+	call skipwhite
 oo_2:
-	call	getword
-	push	dx
-	call	skipcomm0
-    cmp bl,1
-    jz  oo_4
-    cmp bl,2
-    jz  oo_5
-	call	getbyte
-	call	chkeol		;expect end of line here
-	xchg	ax,dx		;al = byte
-	pop	dx		;recover port number
-	out	dx,al
+	call getword
+	push dx
+	call skipcomm0
+	cmp bl,1
+	jz oo_4
+	cmp bl,2
+	jz oo_5
+	call getbyte	;dl=byte
+	call chkeol		;expect end of line here
+	xchg ax,dx		;al = byte
+	pop dx			;recover port number
+	out dx,al
 	ret
-oo_4:    
-	call	getword
-	call	chkeol		;expect end of line here
-	xchg	ax,dx		;al = byte
-	pop	dx
-	out	dx,ax
+oo_4:
+	call getword	;dx=word
+	call chkeol		;expect end of line here
+	xchg ax,dx		;ax = word
+	pop dx
+	out dx,ax
 	ret
-oo_5:    
-	cpu	386
-	call getdword
-	call	chkeol		;expect end of line here
-    push	bx
-    push	dx
-    pop		eax
-	pop	dx
-	out	dx,eax
+oo_5:
+	.386
+	call getdword	;bx:dx=dword
+	call chkeol		;expect end of line here
+	push bx
+	push dx
+	pop eax
+	pop dx
+	out dx,eax
 	ret
-    cpu 8086
+	.8086
+oo endp
 
 ;--- ensure segment in BX is writeable
-;--- C: segment not writeable
+;--- out: Carry=1 if segment not writeable
+;--- might clear HiWord(EDI)
 
-verifysegm:
-%if PM
+if PM
+
+verifysegm proc
 	call ispm
-    jnz is_rm
-    push ax
-    call getattrbx
-    test al,8		;is it a code selector
-    jz  is_data
-	push cx
-    push dx
-    push ax
-	mov ax,6
-    int 31h
+	jz is_rm
+	.286
+	push ax
+	push di
+	push bp
+	mov bp,sp
+	sub sp,8
+	mov di,sp
+	sizeprf				;lea edi,[di] (synonym for movzx edi,di)
+	lea di,[di]
+	mov ax,000Bh		;get descriptor
+	int 31h
+	jc @F
+	test byte ptr [di+5],8	;code segment?
+	jz @F
+	and byte ptr [di+5],0F3h;reset CODE+conforming attr
+	or byte ptr [di+5],2	;set writable
+	mov bx,[scratchsel]
+	mov ax,000Ch
+	int 31h
+@@:
+	leave
+	pop di
 	pop ax
-    jc is_data2
-    push ax
-    mov bx,[cs:scratchsel]
-    mov ax,7
-    int 31h
-    pop cx
-    and cl,~(8+4)	;set to data,reset conforming attr
-    mov ax,9
-    int 31h
-is_data2:
-    pop dx
-    pop cx
-is_data:    
-    pop ax
+	ret
 is_rm:
-%else
-	clc
-%endif
-    ret
+	ret
+	.8086
+verifysegm endp
 
-%if PM
-getcsattr:    
-	mov ah,00
-    cmp byte [machine],3
-    jb getcsattr_1
-    call ispm
-    jnz getcsattr_1
-    mov ax,[reg_cs]
-    call getattrhigh
-getcsattr_1:    
-    mov [bCSAttr],ah
-    ret
-%endif
+setrmsegm:
+	.286
+	mov bx,cs:[scratchsel]
+setrmaddr:		;<--- set selector in BX to segment address in DX
+	mov cx,dx
+	shl dx,4
+	shr cx,12
+	mov ax,7
+	int 31h
+	ret
+	.8086
+
+;--- out: AL= HiByte of attributes of current CS
+;--- out: ZF=1 if descriptor is 16bit
+;--- called by P, T, U
+;--- modifies EAX, BX
+
+getcsattr proc
+	mov bx,[regs.rCS]
+getselattr::	;<--- any selector in BX
+	mov al,00
+	cmp [machine],3
+	jb @F
+	call ispm
+	jz @F
+	.386
+	lar eax,ebx
+	shr eax,16
+	.8086
+@@:
+	test al,40h
+	ret
+getcsattr endp
+
+endif ;PM
 
 ;--- read [EIP+x] value 
+;--- in: CX=x 
+;--- [regs.rCS]=CS
+;--- [regh_(e)ip]=EIP
+;--- out: AL=[CS:(E)IP]
+;--- [E]BX=[E]IP+x 
+;--- called by T and G
 
-getcseipbyte:
-    push es
-    mov es,[reg_cs]
-%if PM
-	test byte [bCSAttr],40h 
-    jz isrmipx
-    cpu 386
-    mov bx,[regh_eip]
-    shl ebx,16
-    mov bx,[reg_ip]
-    push edx
-    movsx edx,cx
-	mov	al,[es:ebx+edx]
-    pop edx
-    pop es
-    ret
-    cpu 8086
-isrmipx:    
-%endif
-	mov bx,[reg_ip]
-    add bx,cx
-	mov	al,[es:bx]
-    pop es
-    ret
-    
-;--- set [EIP+x] value 
-
-setcseipbyte:
-    push es
-    mov bx,[reg_cs]
-    call verifysegm
-    jc scib_1
-    mov es,bx
-%if PM
-	test byte [bCSAttr],40h 
-    jz isrmipxx
-    cpu 386
-    mov bx,[regh_eip]
-    shl ebx,16
-    mov bx,[reg_ip]
-    push edx
-    movzx edx,cx
-	mov	[es:ebx+edx],al
-    pop edx
-    pop es
-    ret
-    cpu 8086
-isrmipxx:   
-%endif
-	mov bx,[reg_ip]
-    add bx,cx
-	mov	[es:bx],al
-scib_1:    
-    pop es
-    ret
-
-;--- write CL at DS:E/DX
-;--- AX<>0 -> real-mode
-
-writeeip:
-%if PM
-	and ax,ax
-    jnz isrmip
-    cmp byte [cs:machine],3
-    jb  isrmip
-    push ax
-    mov ax,bx
-    call getattrhigh
-    pop ax
-    jz isrmip
-    cpu 386
-    mov [edx],cl
-    cpu 8086
-    ret
-isrmip:    
-%endif
-    mov bx,dx
-	mov	[bx],cl
-    ret
-
-%if PM
-
-;--- DS:SI -> protected-mode "flag" (WORD)
-;--- returns AX<>0000 if real-mode
-
-IsSegm2Sel:    
-    mov ax,1686h
-    int 2fh
-    cmp ax,[si]
-    jz nomodechange	;has mode changed?
-    and ax, ax
-    jnz nomodechange;current mode protected-mode?
-    push ax
-	mov ax,2
-	int 31h			;then transform saved CS to a selector
-    mov bx,ax
-    pop ax 
-nomodechange:
+getcseipbyte proc
+	push es
+	mov es,[regs.rCS]
+if PM
+	sizeprf			;mov ebx,[regs.rIP]
+endif
+	mov bx,[regs.rIP]
+if PM
+	test [bCSAttr],40h 
+	jz @F
+	.386
+	movsx ecx,cx
+	add ebx,ecx
+	mov al,es:[ebx]
+	pop es
 	ret
-%endif
+	.8086
+@@:
+endif
+	add bx,cx
+	mov al,es:[bx]
+	pop es
+	ret
+getcseipbyte endp
+
+;--- set [EIP+x] value 
+;--- in: CX=x 
+;--- AL=byte to write
+;--- [regs.rCS]=CS
+;--- [regs.rIP]=EIP
+;--- modifies [E]BX
+
+setcseipbyte proc
+	push es
+	mov bx,[regs.rCS]
+if PM
+	call verifysegm
+	jc scib_1
+endif
+	mov es,bx
+if PM
+	sizeprf
+endif
+	mov bx, [regs.rIP]
+if PM
+	test [bCSAttr],40h 
+	jz is_ip16
+	.386
+	movsx ecx,cx
+	mov es:[ebx+ecx],al
+scib_1:
+	pop es
+	ret
+	.8086
+is_ip16:
+endif
+	add bx,cx
+	mov es:[bx],al
+	pop es
+	ret
+setcseipbyte endp
+
+;--- write a byte (AL) at BX:E/DX
+;--- OUT: AL=old value at that location
+
+writemem proc
+if PM
+	call ispm
+	jz weip16
+	call verifysegm	;make bx a writeable segment
+	jc weip_1
+	push ax
+	call getselattr
+	pop ax
+	jz weip16
+	.386
+	push ds
+	mov ds,bx
+	xchg al,[edx]
+	pop ds
+	.8086
+weip_1:
+	ret
+weip16:
+endif
+	push ds
+	mov ds,bx
+	push bx
+	mov bx,dx
+	xchg al,[bx]
+	pop bx
+	pop ds
+	ret
+writemem endp
+
+;--- read byte at BX:EDX into AL
+
+readmem proc
+if PM
+	call getselattr
+endif
+	push ds
+	mov ds,bx
+if PM
+	sizeprf		;mov ebx,edx
+endif
+	mov bx,dx
+if PM
+	jz $+3
+	db 67h		;mov al,[ebx]
+endif
+	mov al,[bx]
+	pop ds
+	ret
+readmem endp
+
+if PM
+
+;--- DS:SI -> previous msw (WORD)
+;--- if switch to protected-mode: convert segment in BX to selector
+;--- returns AX==0000 if real-mode
+;--- return with Carry set if a switch to real-mode occured
+;--- BX:(E)DX = CS:EIP
+
+;--- there's a problem if a switch from protected-mode to real-mode
+;--- occured: the protected-mode address can't be accessed anymore!
+
+IsPMSwitch proc
+	mov ax,[regs.msw]
+	cmp ax,[si]
+	jz nomodechange	;jump if no mode change
+	and ax, ax
+	jz changed2rm	;jump if current mode is real-mode
+	push ax
+	mov ax,2
+	int 31h			;transform saved CS to a selector
+	mov bx,ax
+	pop ax 
+	cmp [machine],3
+	jb nomodechange
+	.386
+	movzx edx,dx	;ensure hiword edx is cleared
+	.8086
+nomodechange:
+	clc
+	ret
+changed2rm:
+	stc
+	ret
+IsPMSwitch endp
+
+endif
 
 ;--- check if an unexpected int 3 has occured
+;--- CS:(E)IP in regs.rCS:regs.rIP
+;--- in: DX=0, out: DX=msg
+;--- called by P, T
 
-IsUnexpInt3:    
-    push ds
-%if PM
-	call ispm
-    jnz pp11_2
-    cmp byte [machine],3
-    jb pp11_2
-    cpu 386
-    mov ax,[reg_cs]
-    call getattrhigh
-    jz pp11_2
-    mov bx,[regh_eip]
-    shl ebx,16
-    mov bx,[reg_ip]
-	mov	ds,[reg_cs]
-	dec	ebx
-    cmp [ds:ebx],byte 0CCh
-    pop ds
-    jz isunexp_exit
-    mov [reg_ip],bx
-    shr ebx,16
-    mov [regh_eip],bx
-    jmp pp11_3
-    cpu 8086
-pp11_2:    
-%endif    
-	mov	bx,[reg_ip]
-	mov	ds,[reg_cs]
-	dec	bx
-    cmp [ds:bx],byte 0CCh
-    pop ds
-    jz  isunexp_exit
-	mov	[reg_ip],bx
-pp11_3:    
-	mov	dx,int3msg
+IsUnexpInt3 proc
+	mov cx,-1
+	call getcseipbyte
+	cmp al,0CCh
+	jz isunexp_exit
+	mov dx,offset int3msg
+if PM
+	test [bCSAttr],40h
+	jz $+3
+	db 66h	;mov [regs.rIP],ebx
+endif
+	mov [regs.rIP],bx
 isunexp_exit:
 	ret
+IsUnexpInt3 endp
 
-;	P command - proceed (i.e., skip over call/int/loop/string instruction).
+;--- P command - proceed (i.e., skip over call/int/loop/string instruction).
 
-pp:	
-	call	parse_pt	;process arguments
-    jcxz	isunexp_exit
+pp proc
+	call parse_pt	;process arguments
 
-;	Do it <count> times.  First check the type of instruction.
+;--- Do it <CX=count> times.  First check the type of instruction.
 
 pp1:
-	push	cx		;save cx
-	mov	dx,15		;DL = number of bytes to go; DH = prefix flags.
-%if PM
+	push cx			;save cx
+	mov dx,15		;DL = number of bytes to go; DH = prefix flags.
+if PM
 	call getcsattr
-    test ah,40h
-    jz iseip16
-    cpu 386
-    mov si,[regh_eip]
-    shl esi,16
-    mov dh,1+2
-    cpu 8086
-iseip16:    
-%endif    
-	mov	si,[reg_ip]
+	mov [bCSAttr],al
+	jz @F
+	mov dh,PP_ADRSIZ + PP_OPSIZ
+	db 66h		;mov esi,[regs.rIP]
+@@:
+endif
+	mov si,[regs.rIP]
 pp2:
-	call pp16		;get next instruction byte into AL
-	mov	di,ppbytes
-	mov	cx,PPLEN
-	repne	scasb
-	jne	pp5		;if not one of these
-	mov	al,[di+PPLEN-1]	;get corresponding byte in ppinfo
-	test	al,80h
-	jz	pp3		;if not a prefix
-;	or	dh,al	;set the flags
-	xor	dh,al	;set the flags
-	dec	dl
-	jnz	pp2		;if not out of bytes
-	jmp	pp12
-
-pp3:
+	call getnextb	;AL=[cs:(e)ip], eip++
+	mov di,offset ppbytes
+	mov cx,PPLEN
+	repne scasb
+	jne pp5			;if not one of these
+	mov al,[di+PPLEN-1]	;get corresponding byte in ppinfo
+	test al,PP_PREFIX
+	jz @F			;if not a prefix
+	xor dh,al		;update the flags
+	dec dl
+	jnz pp2			;if not out of bytes
+	jmp pp12		;more than 15 prefixes will cause a GPF
+@@:
 	test al,40h
-	jz	pp4		;if no size dependency
-	and	al,3fh
-	and	dh,2
-	add	al,dh
-pp4:	
+	jz @F		;if no size dependency
+	and al,3fh
+	and dh,PP_OPSIZ	;for CALL, operand size 2->4, 4->6
+	add al,dh
+@@:
 	cbw
-	call addeip	;add ax to (E)SI
-	jmp	pp11	;we have a skippable instruction here
+	call addeip	;add ax to instruction pointer in (E)SI
+	jmp pp11	;we have a skippable instruction here
 
 pp5:
-	cmp	al,0ffh
-    jz pp5_0
-	jmp	pp12		;just an ordinary instruction
-pp5_0    
-	call pp16		;get MOD REG R/M byte
-	and	al,~8		;clear lowest bit of REG field (/3 --> /2)
-	xor	al,10h		;/2 --> /0
-	test	al,38h
-    jz pp5_1
-	jmp	pp12	;if not ff/2 or ff/3
-pp5_1:    
-	cmp	al,0c0h
-	jae	pp11	;if just a register
-	test dh,1
-	jnz	pp6		;if 32 bit addressing
-	cmp	al,6
-	je	pp9		;if just plain disp16
-	cmp	al,40h
-	jb	pp11		;if indirect register
-	cmp	al,80h
-	jb	pp10		;if disp8[reg(s)]
-	jmp	pp9		;it's disp16[reg(s)]
+	cmp al,0ffh	;indirect call?
+	jz @F
+	jmp pp12	;just an ordinary instruction
+@@:
+	call getnextb	;get MOD REG R/M byte
+	and al,not 8	;clear lowest bit of REG field (/3 --> /2)
+	xor al,10h	;/2 --> /0
+	test al,38h
+	jz @F
+	jmp pp12	;if not ff/2 or ff/3
+@@:
+	cmp al,0c0h
+	jae pp11	;if just a register
+	test dh,PP_ADRSIZ
+	jnz pp6		;if 32 bit addressing
+	cmp al,6
+	je pp9		;if just plain disp16
+	cmp al,40h
+	jb pp11		;if indirect register
+	cmp al,80h
+	jb pp10		;if disp8[reg(s)]
+	jmp pp9		;it's disp16[reg(s)]
 
-pp6:	cmp	al,5
-	je	pp8		;if just plain disp32
-	xor	al,4
-	test	al,7
-	jnz	pp7		;if no SIB byte
+pp6:
+	cmp al,5
+	je pp8		;if just plain disp32
+	xor al,4
+	test al,7
+	jnz @F		;if no SIB byte
 	call inceip
-pp7:	cmp	al,40h
-	jb	pp11		;if indirect register
-	cmp	al,80h
-	jb	pp10		;if disp8[reg(s)]
+@@:
+	cmp al,40h
+	jb pp11		;if indirect register
+	cmp al,80h
+	jb pp10		;if disp8[reg(s)]
 				;otherwise, it's disp32[reg(s)]
 pp8:
 	call inceip
-    call inceip
+	call inceip
 pp9:
 	call inceip
 pp10:
 	call inceip
 
 pp11:
-	mov	bx,[reg_cs]
-    jmp pp11x_1
+	mov bx,[regs.rCS]
+	jmp pp11x_1
+pp14:
+	jmp pp1			;back for more
 
-;	Special instruction.  Set a breakpoint and run until we hit it.
-;   BX:(E)SI == CS:(E)IP to set breakpoint
+;--- Special instruction.  Set a breakpoint and run until we hit it.
+;--- BX:(E)SI == address where a breakpoint is to be set.
 
-pp11x:
+process1::			;<--- used by T if an INT is to be processed
 	mov cx,1
 	push cx
-pp11x_1:    
-	push ds
-    push bx
-%if PM    
-	call verifysegm	;makes BX a writeable segment
-    jnc pp11x_2
-    mov dx,cantwritebp
-    jmp prnquit
-pp11x_2:
-%endif
-	mov ds,bx
-	mov	al,0cch
-    call xchgeip	;xchange byte at DS:(E)SI
-    pop bx
-	pop	ds
-	mov	di,line_out	;save old byte here
+pp11x_1:		;BX=CS
+if PM
+	sizeprf		;mov edx,esi
+endif
+	mov dx,si
+	mov al,0cch
+	call writemem
+	jnc pp11x_3
+	mov dx,offset cantwritebp
+	jmp prnquit
+pp11x_3:
+	mov di,offset line_out	;save old byte here
 	stosb
-	xchg	ax,si
+if PM
+	sizeprf	;xchg eax,esi
+endif
+	xchg ax,si
+if PM
+	sizeprf	;stosd
+endif
 	stosw
-%if PM
-	cmp byte [machine],3
-    jb noeipsave
-    cpu 386
-	shr esi,16		;save hiword EIP if machine is a 80386+
-    xchg ax,si
+	mov ax,bx
 	stosw
-    cpu 8086
-noeipsave:    
-%endif
-	mov	ax,bx
+if PM
+	mov ax,[regs.msw]
 	stosw
-%if PM    
-    mov ax,1686h
-    int 2Fh
-    stosw
-%endif    
-	call	run
-    
-	mov	si,line_out
+endif
+	call run		;this might change mode and/or terminate the debuggee!
+if PM
+	call getcsattr	;set variable bCSAttr
+	mov [bCSAttr],al
+endif
+	mov si,offset line_out
 	lodsb			;get old byte
-	xchg	ax,cx	;into CL
+	xchg ax,cx		;into CL
+if PM
+	sizeprf			;lodsd
+endif
 	lodsw			;old IP
-	xchg	ax,dx
-%if PM
-	cmp byte [machine],3
-    jb noeipsave_2
-    cpu 386
-    lodsw
-    shl edx,16
-    xchg ax,dx
-    ror edx,16
-    cpu 8086
-noeipsave_2:    
-%endif
+if PM
+	sizeprf			;xchg eax,edx
+endif
+	xchg ax,dx
 	lodsw			;old CS
-	xchg	ax,bx	;CS -> BX
-%if PM
-	call IsSegm2Sel	;returns AX==0 if protected-mode
-%endif
-    push ds
-    push bx
-    call verifysegm	;make bx a writeable segment
-	mov	ds,bx
-    call writeeip	;write byte CL at EIP (DS:E/DX)
-    pop cx
-	pop	ds
-	xor	dx,dx		;set flag
-	cmp	word [run_int],int3msg
-	jne	pp13		;if not CC interrupt
-    call IsUnexpInt3
-    jmp pp13
+	xchg ax,bx		;CS -> BX
+if PM
+	call IsPMSwitch	;change BX to selector if switch to pmode
 
-;	Ordinary instruction.  Just do a trace.
+;--- if a switch to real-mode occured (usually happens on pgm termination),
+;--- then it's a good idea NOT to restore the breakpoint.
+	jc pp15
 
-pp12:	
-	or	word [reg_fl],100h	;set single-step mode
-	call	run
-	mov	dx,int1msg
+endif
+	mov al,cl
+	call writemem	;write byte AL at BX:E/DX
+	xor dx,dx		;set flag
+	cmp [run_int],offset int3msg
+	jne pp13		;if not CC interrupt
+	call IsUnexpInt3;test byte at regs.rCS:regs.rIP-1 if CCh	
+	jmp pp13
 
-;	Common part to finish up.
+;--- Ordinary instruction.  Just do a trace.
 
-pp13:	cmp	[run_int],dx
-	jne	pp15		;if some other interrupt
-	call	dumpregs
-	pop	cx
-	loop	pp14		;back for more
+pp12:
+	or byte ptr [regs.rFL+1],1	;set single-step mode
+	call run
+	mov dx,offset int1msg
+
+;--- Common part to finish up.
+
+pp13:
+	cmp [run_int],dx
+	jne pp15		;if some other interrupt
+	call dumpregs
+	pop cx
+	loop pp14		;back for more
 	ret
 
-pp14:	jmp	pp1		;back for more
-pp15:	jmp	tt2		;print message about unexpected interrupt
-				;and quit
+pp15:
+	jmp ue_int		;print message about unexpected interrupt and quit
 
-ppout:    			;run code until next RETF
-    mov bx,[reg_sp]
-    push es
-    mov es,[reg_ss]
-    mov si,[es:bx+0]
-    mov bx,[es:bx+2]
-    pop es
-    jmp pp11x
+inceip:
+if PM
+	test [bCSAttr],40h
+	jz $+3
+	db 66h		;inc esi
+endif
+	inc si
+	ret
 
-inceip:    
-%if PM
-	test byte [bCSAttr],40h
-    jnz inceip_1
-%endif    
-	inc	si
-    ret
-%if PM
-	cpu 386
-inceip_1:
-	inc esi
-    ret
-    cpu 8086
-%endif
 addeip:
-%if PM
-	test byte [bCSAttr],40h
-    jnz addeip_1
-%endif    
-	add	si,ax
-    ret
-%if PM    
-	cpu 386
-addeip_1:
+if PM
+	test [bCSAttr],40h
+	jz @F
+	.386
 	movzx eax,ax
-	add	esi,eax
-    ret
-    cpu 8086
-%endif
+	.8086
+	db 66h		;add esi,eax
+@@:
+endif
+	add si,ax
+	ret
 
-;--- exchange byte at CS:EIP (in DS:ESI)
+;--- getnextb - Get next byte in instruction stream.
+;--- [e]si = eip
 
-xchgeip:    
-%if PM
-	test byte [cs:bCSAttr],40h
-    jnz xchgeip_1
-%endif    
-	xchg	al,[si]
-    ret
-%if PM
-xchgeip_1:
-	xchg	al,[esi]
-    ret
-%endif
-
-;	PPX - Get next byte in instruction stream.
-
-pp16:
-%if PM
-	test byte [bCSAttr],40h
-    jnz pp16_2
-%endif
+getnextb:
 	push ds
-	mov	ds,[reg_cs]
+	mov ds,[regs.rCS]
+if PM
+	test cs:[bCSAttr],40h
+	jz $+3
+	db 67h		;lodsb [esi]
+endif
 	lodsb
-	pop	ds
+	pop ds
 	ret
-%if PM
-pp16_2:
-	push ds
-    mov ds,[reg_cs]
-    a32 lodsb
-    pop ds
-	ret
-%endif
 
-;	begin loop over instruction bytes.
+pp endp
 
-;	Q command - quit.
+;--- Q command - quit.
 
-qq:	
+qq proc
+if PM
+	mov byte ptr [dpmidisable+1],0	;disble DPMI hook
+	inc [bNoHook2F]					;avoid a new hook while terminating
+endif
 
-; cancel child's process if any
+;--- cancel child's process if any
+;--- this will drop to real-mode if debuggee is in pmode
 
-	call	freemem
+	call freemem
 
-;	Restore interrupt vectors.
+if VDD
+	mov ax,[hVdd]
+	cmp ax,-1
+	jz @F
+	UnRegisterModule
+@@:
+endif
 
-	mov	di,intsave
-	mov	si,inttab
-    mov cx,4
+;--- Restore interrupt vectors.
+
+	mov di,offset intsave
+	mov si,offset inttab
+	mov cx,NUMINTSX
 nextint:
 	lodsb
-    mov bl,al
-    add si,2
-    xchg si,di
+	mov bl,al
+	add si,2
+	xchg si,di
 	lodsw
-    mov dx,ax
-    lodsw
-    xchg si,di
-    cmp bl,22h
-    jz norestore
-    and ax,ax
-    jz norestore
-    push ds
-    mov ds,ax
-    mov al,bl
-	mov	ah,25h
-	int	21h
-    pop ds
+	mov dx,ax
+	lodsw
+	xchg si,di
+	cmp bl,22h
+	jz norestore
+	and ax,ax
+	jz norestore
+	push ds
+	mov ds,ax
+	mov al,bl
+	mov ah,25h
+	int 21h
+	pop ds
 norestore:
-    loop nextint
-%if PM
-    mov cx,[oldi2f+2]
-    jcxz noi2frest
-    push ds
-    lds dx,[oldi2f]
-    mov ax,252Fh
-    int 21h
-    pop ds
-noi2frest:
-%endif
+	loop nextint
 
-;	Restore termination address.
+;--- Restore termination address.
 
-	mov	si,psp22	;restore termination address
-	mov	di,TPIVOFS
+	mov si,offset psp22	;restore termination address
+	mov di,TPIV
 	movsw
 	movsw
-	mov	di,16h		;restore PSP of parent
+	mov di,PARENT		;restore PSP of parent
 	movsw
 
-;	Really done.
+;--- Really done.
 
-	int	20h
+	int 20h			;might not work if format==MZ!
+	jmp cmdloop		;returned? then something is terribly wrong.
+qq endp
 
-;	R command - manipulate registers.
+if MMXSUPP
+rm proc
+	cmp [has_mmx],1
+	jnz @F
+	jmp dumpregsMMX
+@@:
+	ret
+rm endp
+endif
 
-rr:	cmp	al,CR
-	jne	rr1		;if there's an argument
-	call	dumpregs
+;--- RX command: toggle mode of R command (16 - 32 bit registers)
+
+rx proc
+	call skipwhite
+	cmp al,CR
+	je @F
+	jmp rr_err
+@@:
+	cmp [machine],3
+	jb rx_exit
+	xor [rmode],RM_386REGS
+	mov ax," n"	;"on"
+	jnz @F
+	mov ax,"ff"	;"off"
+@@:
+	mov word ptr [regs386s],ax
+	mov di,offset line_out
+	mov si,offset regs386
+	call showstring
+	call putsline
+rx_exit:
+	ret
+rx endp
+
+;--- RN command: display FPU status
+
+rn proc
+	call skipwhite
+	cmp al,CR
+	je @F
+	jmp rr_err
+@@:
+	cmp [has_87],0
+	jz @F
+	call dumpregsFPU
+@@:
+	ret
+rn endp
+
+;--- R command - manipulate registers.
+
+rr proc
+	cmp al,CR
+	jne @F		;if there's an argument
+	jmp dumpregs
+@@:
+	and al,TOUPPER
+	cmp al,'X'
+	je rx
+if MMXSUPP
+	cmp al,'M'
+	je rm
+endif
+	cmp al,'N'
+	je rn
+
+;--- an additional register parameter was given
+
+	dec si
+	lodsw
+	and ax,TOUPPER_W
+	mov di,offset regnames
+	mov cx,NUMREGNAMES
+	repne scasw
+	mov bx,di
+	mov di,offset line_out
+	jne rr2			;if not found in standard register names
+	cmp byte ptr [si],20h	;avoid "ES" to be found for "ESI" or "ESP"
+	ja rr2
+	stosw			;print register name
+	mov al,' '
+	stosb
+	mov bx,[bx+NUMREGNAMES*2-2]
+	call skipcomma	;skip white spaces
+	cmp al,CR
+	jne rr1a		;if not end of line
+	push bx			;save bx for later
+	mov ax,[bx]
+	call hexword
+	call getline0	;prompt for new value
+	pop bx
+	cmp al,CR
+	je rr1b			;if no change required
+rr1a:
+	call getword
+	call chkeol		;expect end of line here
+	mov [bx],dx		;save new value
+rr1b:
 	ret
 
-rr1:and al,TOUPPER
-	cmp al,'X'
-    jne rr1x
-    call skipwhite
-    cmp al,CR
-    je rr1_0
-    jmp no386_5    
-rr1_0:    
-    cmp [machine],byte 3
-    jb  rr1_w
-    xor [regsdmp],byte 1
-    mov ax,"n "
-    jnz rr1_x1
-    mov ax,"ff"
-rr1_x1    
-	mov word [regs386s],ax
-	mov	di,line_out
-    mov si,regs386
-    call showstring
-    call putsline
-rr1_w:    
-    ret
-rr1x:    
-	cmp al,'N'
-    jne rr1y
-    lodsb
-    cmp al,CR
-    je rr1x_0
-    jmp no386_5    
-rr1x_0:    
-    cmp [has_87],byte 0
-    jz  rr1x_1
-    call dumpregsF
-rr1x_1:    
-    ret
-rr1y:
-	dec	si
-	lodsw
-	and	ax,TOUPPER_W
-	mov	di,regnames
-	mov	cx,16
-	repne	scasw
-	mov	bx,di
-	mov	di,line_out
-	jne	rr2		;if not found
-    cmp [si],byte 20h	;avoid "ES" to be found for "ESI" or "ESP"
-    ja rr2
-	stosw			;print register name
-	mov	al,' '
-	stosb
-	sub	bx,regnames+2
-	call	skipcomma	;skip white spaces
-	cmp	al,CR
-	jne	rr1a		;if not end of line
-	push	bx		;save bx for later
-	mov	ax,[bx+regs]
-	call hexword
-	call getline0	;prompt for new value
-	pop	bx
-	cmp	al,CR
-	je	rr1b		;if no change required
-rr1a:	call	getword
-	call	chkeol		;expect end of line here
-	mov	[bx+regs],dx	;save new value
-	cmp	bx,reg_ip - regs
-	jne	rr1b		;if not changing IP
-rr1b:	ret
+;--- is it the F(lags) register?
 
-;	Change flags
-
-rr2:	cmp	al,'F'
-	jne	rr6		;if not 'f'
-	dec	si
+rr2:
+	cmp al,'F'
+	jne rr6			;if not 'f'
+	dec si
 	lodsb
-	cmp	al,CR
-	je	rr2b		;if end of line
-	cmp	al,' '
-	je	rr2a		;if white space
-	cmp	al,TAB
-	je	rr2a		;ditto
-	cmp	al,','
-    je rr2a
-	jmp	errorj9		;if not, then it's an error
+	cmp al,CR
+	je rr2b			;if end of line
+	cmp al,' '
+	je rr2a			;if white space
+	cmp al,TAB
+	je rr2a			;ditto
+	cmp al,','
+	je rr2a
+	jmp errorj9		;if not, then it's an error
 rr2a:
-	call	skipcomm0
-	cmp	al,CR
-	jne	rr3		;if not end of line
-rr2b:	call	dmpflags
+	call skipcomm0
+	cmp al,CR
+	jne rr3			;if not end of line
+rr2b:
+	call dmpflags
 	call getline0	;get input line (using line_out as prompt)
-rr3:	cmp	al,CR
-	je	rr1b		;return if done
-	dec	si
+rr3:
+	cmp al,CR
+	je rr1b			;return if done
+	dec si
 	lodsw
-	and	ax,TOUPPER_W	;here's the mnemonic
-	mov	di,flgnams
-	mov	cx,16
-	repne	scasw
-	jne	rr6		;if no match
-	cmp	di,flgnons
-	ja	rr4		;if we're clearing
-	mov	ax,[di-16-2]
-	not	ax
-	and	[reg_fl],ax
-	jmp	rr5
+	and ax,TOUPPER_W;here's the mnemonic
+	mov di,offset flgnams
+	mov cx,16
+	repne scasw
+	jne rr6			;if no match
+	cmp di,offset flgnons
+	ja rr4			;if we're clearing
+	mov ax,[di-16-2]
+	not ax
+	and [regs.rFL],ax
+	jmp rr5
 
-rr4:	mov	ax,[di-32-2]
-	or	[reg_fl],ax
+rr4:
+	mov ax,[di-32-2]
+	or [regs.rFL],ax
 
-rr5:	call	skipcomma
-	jmp	rr3		;if done
+rr5:
+	call skipcomma
+	jmp rr3			;check if more
+
+;--- it is neither 16bit register nor the F(lags) register.
+;--- check for valid 32bit register name!
 
 rr6:
-	cmp [machine],byte 3
-    jb  no386_5
-    cmp al,'E'
-    jnz no386_5
-    lodsb
-    and al,TOUPPER
-    xchg al,ah
-    mov cx,16
-	mov	di,regnames
-	repne	scasw
-	jne	no386_5
-	mov	bx,di
-	mov	di,line_out
-    mov [di],byte 'E'
-    inc di
-    stosw
-	mov	al,' '
+	cmp [machine],3
+	jb rr_err
+	cmp al,'E'
+	jnz rr_err
+	lodsb
+	and al,TOUPPER
+	cmp al,'S'		;avoid EDS,ECS,ESS,... to be accepted!
+	jz rr_err
+	xchg al,ah
+	mov cx,NUMREGNAMES
+	mov di,offset regnames
+	repne scasw
+	jne rr_err
+
+;--- it is a valid 32bit register name
+
+	mov bx,di
+	mov di,offset line_out
+	mov byte ptr [di],'E'
+	inc di
+	stosw
+	mov al,' '
 	stosb
-	sub	bx,regnames+2
-	call	skipcomma	;skip white spaces
-	cmp	al,CR
-	jne	rr1aX   	;if not end of line
-	push	bx		;save bx for later
-	mov	ax,[bx+regshi]
-	call hexword
-	mov	ax,[bx+regs]
-	call hexword
-    
+	mov bx,[bx+NUMREGNAMES*2-2]
+	call skipcomma	;skip white spaces
+	cmp al,CR
+	jne rr1aX   	;if not end of line
+	push bx
+	.386
+	mov eax,[bx+0]
+	.8086
+	call hexdword
 	call getline0	;prompt for new value
-	pop	bx
-	cmp	al,CR
-	jne	rr1aX
-	jmp rr1b		;if no change required
+	pop bx
+	cmp al,CR
+	je rr1bX		;if no change required
 rr1aX:
 	push bx
 	call getdword
-    mov	cx,bx
-	pop	bx
+	mov cx,bx
+	pop bx
 	call chkeol		;expect end of line here
-	mov	[bx+regs],dx	;save new value
-	mov	[bx+regshi],cx	;save new value
-	cmp	bx,reg_ip - regs
-	jne	rr1bX		;if not changing IP
-rr1bX:	ret
-    
-no386_5    
-	dec	si		;back up one before flagging an error
-errorj9:jmp	error
-
-;	S command - search for a string of bytes.
-
-sss:	
-	mov	bx,[reg_ds]	;get search range
-	xor	cx,cx
-	call	getrangeX	;get address range into BX:DX..BX:CX
-	call	skipcomm0
-	push	cx
-	push	dx
-	call	getstr		;get string of bytes
-	pop	dx
-	pop	cx
-	sub	cx,dx		;cx = number of bytes in search range minus one
-	sub	di,line_out	;di = number of bytes to look for
-	dec	di		;        minus one
-	sub	cx,di		;number of possible positions of string minus 1
-	jb	errorj9		;if none
-	call prehack	;set up for the interrupt vector hack
-	inc	cx		;cx = number of possible positions of string
-	xchg dx,di
-	push bx		;push the segment
-sss1:
-	call dohack		;do the interrupt pointer hack
-	pop	es		;recover the segment
-	mov	si,line_out	;si = address of search string
-	lodsb			;first character in al
-	repne	scasb		;look for first byte
-	jne	sss3		;if we're done
-	push	es		;save the segment again
-	mov	ax,es		;also in ax
-	push	cx
-	push	di
-	mov	cx,dx
-	repe	cmpsb
-	push	si
-	pushf
-	call unhack		;undo the interrupt vector hack and restore es
-	popf
-	pop	si
-	pop	di
-	jne	sss2		;if not equal
-	push	dx
-	xchg	si,di		;write address right after search string
-	call hexword
-	mov	al,':'
-	stosb
-	lea	ax,[si-1]
-	call hexword
-	mov	ax,LF * 256 + CR
-	stosw
-	mov	cx,11
-	lea	dx,[di-11]
-    call stdout			;write to stdout
-	pop	dx
-	mov	di,si
-sss2:	pop	cx
-	inc	cx
-	loop	sss1		;go back for more
-	pop	ax		;remove saved es from the stack
-
-sss3:	jmp	unhack		;undo the interrupt vector hack, restore es,
-				;and return
-
-;	T command - Trace.
-
-tt:
-	mov		ah,al
-    and		ah,TOUPPER
-    cmp		ah,'M'
-    jnz		isnotmodeset
-	call	skipcomma
-    cmp     al,CR
-    jz      ismodeget
-    call	getword
-    cmp		dx,1
-	jna 	tt_0
-	jmp 	error    
-tt_0:
-	call	chkeol		;expect end of line here
-    mov		[tmode],dl
-;    ret
-ismodeget:
-	mov		al,[tmode]
-    add		al,'0'
-    mov		[tmodev],al
-	mov	di,line_out
-    mov si,tmodes
-    call showstring
-    mov si,tmode0
-    test byte [tmode],1
-    jz   ismg_1
-    mov si,tmode1
-ismg_1:
-    call showstring
-    call putsline
-_ret:    
+	mov [bx+0],dx	;save new value
+	mov [bx+2],cx	;save new value
+rr1bX:
 	ret
-isnotmodeset:    
-	mov	word [lastcmd], isnotmodeset
-	call parse_pt	;process arguments
-	jcxz _ret
-    
-;	Do it <count> times.
 
-tt1:	
-	push	cx
-%if PM
+rr endp
+
+rr_err:
+	dec si		;back up one before flagging an error
+errorj9:
+	jmp cmd_error
+
+;--- S command - search for a string of bytes.
+
+sss proc
+	mov bx,[regs.rDS]	;get search range
+	xor cx,cx
+	call getrangeX	;get address range into BX:(E)DX..BX:(E)CX
+	call skipcomm0
+	push cx
+	push dx
+	call getstr		;get string of bytes
+	pop dx
+	pop cx
+	sub cx,dx		;cx = number of bytes in search range minus one
+	sub di,offset line_out	;di = number of bytes to look for
+	dec di			;     minus one
+	sub cx,di		;number of possible positions of string minus 1
+	jb errorj9		;if none
+	call prephack	;set up for the interrupt vector hack
+;	inc cx			;cx = number of possible positions of string
+	xchg dx,di		;set DI to offset
+	call dohack		;do the interrupt pointer hack
+sss1:				;<---- search next occurance
+	mov es,bx		;set the segment
+	mov si,offset line_out	;si = address of search string
+	lodsb			;first character in al
+	repne scasb		;look for first byte
+	je sss1_1
+	scasb			;count in CX was cnt-1
+	jne sss3		;if we're done
+sss1_1:
+	push cx
+	push di
+	mov cx,dx
+	repe cmpsb
+	pop di
+	jne sss2		;if not equal
+	call unhack		;undo the interrupt vector hack and restore es
+	push dx
+	xchg si,di		;write address right after search string
+	mov ax,bx
+	call hexword	;4 (segment)
+	mov al,':'
+	stosb			;+1=5
+	lea ax,[si-1]
+	call hexword	;+4=9 (offset)
+	mov ax,LF * 256 + CR
+	stosw			;+2=11
+	mov cx,11
+	lea dx,[di-11]
+	push bx
+	call stdout		;write to stdout
+	pop bx
+	pop dx
+	mov di,si
+	call dohack
+sss2:
+	pop cx
+	inc cx
+	loop sss1		;go back for more
+sss3:
+	jmp unhack
+sss endp
+
+ttmode proc
+	call skipcomma
+	cmp al,CR
+	jz ismodeget
+	call getword
+	cmp dx,1
+	jna @F
+	jmp cmd_error
+@@:
+	call chkeol		;expect end of line here
+	mov [tmode],dl
+;	ret
+ismodeget:
+	mov al,[tmode]
+	add al,'0'
+	mov [tmodev],al
+;	mov di,offset line_out	;DI is initialized with this value
+	mov si,offset tmodes
+	call showstring
+	mov si,offset tmode0
+	test byte ptr [tmode],1
+	jz @F
+	mov si,offset tmode1
+@@:
+	call showstring
+	call putsline
+	ret
+
+ttmode endp
+
+;--- T command - Trace.
+
+tt proc
+	mov ah,al
+	and ah,TOUPPER
+	cmp ah,'M'
+	jz ttmode	;jump if it's the TM command
+tt0:
+	mov [lastcmd], offset tt0
+	call parse_pt	;process arguments
+tt1:
+	push cx
+	call trace1
+	pop cx
+	loop tt1
+	ret
+
+tt endp
+
+;--- trace one instruction
+
+trace1 proc
+if PM
 	call getcsattr
-%endif
+	mov [bCSAttr],al
+endif
+if PM
+	mov bx,[regs.rIP]
+	mov ax,[regs.rCS]
+	cmp bx,word ptr [dpmiwatch+0]	;catch the initial switch to protected mode
+	jnz trace1_1
+	cmp ax,word ptr [dpmiwatch+2]
+	jnz trace1_1
+	cmp [bNoHook2F],0	;current CS:IP is dpmi entry 
+	jz @F
+	mov [regs.rIP],offset mydpmientry	;if int 2fh is *not* hooked
+	mov [regs.rCS],cs
+@@:
+	push ss
+	pop es		;run code until RETF
+	push ds
+	mov bx,[regs.rSP]
+	mov ds,[regs.rSS]
+	mov si,[bx+0]
+	mov bx,[bx+2]
+	pop ds
+	call process1
+	ret
+trace1_1:
+endif
 	xor cx,cx
 	call getcseipbyte
-    cmp al,0CDh
-    jnz isstdtrace
-    inc cx
-    call getcseipbyte
-    cmp al,3
-    jz  isstdtrace
-    test byte [tmode], 1
-    jnz tt1_0
-    jmp  isstdtraceX
-tt1_0:    
-    cmp al,1
-    jz isstdtrace
-    jmp emuint
+	cmp al,0CDh
+	jnz isstdtrace
+	inc cx
+	call getcseipbyte
+	cmp al,3
+	jz isstdtrace
+	test byte ptr [tmode], 1	;TM=1?
+	jz trace_int
+	cmp al,1
+	jnz step_int
 isstdtrace:
-%if PM    
-	mov bx,[reg_ip]
-    cmp bx,[dpmiwatch+0]	;catch the initial switch to protected mode
-    jnz isnotdbgcode
-    mov ax,[reg_cs]
-    cmp ax,[dpmiwatch+2]
-    jz isdpmientry
-isnotdbgcode:    
-%endif
-	or	word [reg_fl],100h	;set single-step mode
-    xor cx,cx
-    call getcseipbyte
-    cmp al,9Ch				;opcode "PUSHF"?
-    jnz isnotpushf
-    call run
-	call cleartfonstack
-    jmp tt1_2
-isnotpushf:    
-	call	run
-tt1_2:    
-	cmp	word [run_int],int1msg
-	je	tt1_1
-	jmp	tt2		;if some other interrupt
-tt1_1:    
-	call	dumpregs
-tt1_3:    
-	pop	cx
-	loop	tt1
+	or byte ptr [regs.rFL+1],1h	;set single-step mode
+	xor cx,cx
+	call getcseipbyte
+	push ax
+	call run
+	pop ax
+	cmp al,9Ch				;was opcode "PUSHF"?
+	jnz @F
+	call clear_tf_onstack
+@@:
+	cmp [run_int],offset int1msg
+	je tt1_1
+	jmp ue_int		;if some other interrupt
+tt1_1:
+	call dumpregs
 	ret
 
-cleartfonstack:
-	push es
-    mov es,[reg_ss]
-%if PM
-    call ispm
-    jnz ctos_0
-	cmp byte [machine],3
-    jb ctos_0
-    cpu 386
-	mov ax,es
-    call getattrhigh
-    jz ctos_0
-    mov bx,[regh_esp]
-    shl ebx,16
-    mov bx,[reg_sp]
-    and byte [es:ebx+1],~1
-    jmp ctos_1
-    cpu 8086
-ctos_0:    
-%endif
-    mov bx,[reg_sp]
-    and byte [es:bx+1],~1
-ctos_1:
-    pop es
-    ret
+; an INT is to be processed (TM is 0)
+; to avoid the nasty x86 bug which makes IRET
+; cause a debug exception 1 instruction too late
+; a breakpoint is set behind the INT
 
-%if PM
-isdpmientry:    
-    cmp byte [bNo2FHook],0
-    jz isstdhook
-    mov word [reg_ip],mydpmientry	;if int 2fh is *not* hooked
-    mov [reg_cs],cs
-isstdhook:    
-    push ss
-    pop es
-    call ppout	;run code until RETF
-    jmp tt1_3
-%endif
+; if the int will terminate the debuggee (int 21h, ah=4Ch)
+; it is important that the breakpoint won't be restored!
+
+trace_int:
+	mov cx,2
+	call iswriteablecseip	;is current CS:IP in ROM?
+	jc isstdtrace			;then do standard trace
+	mov bx,[regs.rCS]
+if PM
+	test [bCSAttr],40h
+	jz $+3
+	db 66h	;mov esi,dword ptr [regs.rIP]
+endif
+	mov si,[regs.rIP]
+if PM
+	jz $+3
+	db 66h	;add esi,2
+endif
+	add si,2
+	call process1		;set BP at BX:(E)SI and run debuggee
+	ret
+
+;--- current instruction is INT, TM is 1, single-step into the interrupt
+;--- AL=int#
+
+step_int:
+	mov bl,al
+if PM
+	call ispm
+	jnz step_int_pm
+endif
+	mov bh,0
+	push ds
+	xor ax,ax
+	mov ds,ax
+	shl bx,1		;stay 8086 compatible in real-mode!
+	shl bx,1
+	cli
+	lds si,[bx+0]
+	mov al,[si]
+	xor byte ptr [si],0FFh
+	cmp al,[si]
+	mov [si],al
+	sti
+	jz isrom
+	mov bx,ds
+	pop ds
+	call process1
+	ret
+isrom:
+	mov  ax,ds
+	pop  ds
+	xchg si,[regs.rIP]
+	xchg ax,[regs.rCS]
+	mov  cx,[regs.rFL]
+	push ds
+	mov  bx,[regs.rSP]
+	mov  ds,[regs.rSS]		;emulate an INT
+	sub  bx,6
+	inc  si 				;skip INT xx
+	inc  si
+	mov  [bx+0],si
+	mov  [bx+2],ax
+	mov  [bx+4],cx
+	pop  ds
+	mov  [regs.rSP],bx
+	and  byte ptr [regs.rFL+1],0FCh  ;clear IF + TF
+	jmp  tt1_1
+if PM
+step_int_pm:
+	mov  ax,204h
+	int  31h			;get vector in CX:(E)DX
+	mov  bx,cx
+	test bl,4			;is it a LDT selector?
+	jnz  @F
+	jmp  isstdtrace
+@@:
+	sizeprf		;mov  esi,edx
+	mov  si,dx
+	call process1
+	ret
+
+endif
+
+trace1 endp
 
 ;--- test if memory at CS:E/IP can be written to
 ;--- return C if not
+;--- IN: CX=offset for (E)IP
 
-iswriteablecseip:    
-    call getcseipbyte
-    mov ah,al
-    xor al,0FFh
-    call setcseipbyte
-    jc notwriteable
-    call getcseipbyte
-    cmp ah,al     			;is it ROM?
-    jz notwriteable
-    mov al,ah
-    call setcseipbyte
-    clc
-    ret
-notwriteable:    
+iswriteablecseip proc
+	call getcseipbyte	;get byte ptr at CS:EIP+CX
+	mov ah,al
+	xor al,0FFh
+	call setcseipbyte
+	jc notwriteable
+	call getcseipbyte
+	cmp ah,al			;is it ROM?
+	jz notwriteable
+	mov al,ah
+	call setcseipbyte
+	clc
+	ret
+notwriteable:
 	stc
-    ret
+	ret
+iswriteablecseip endp
 
-; INTs should be processed if TM==0
-; this avoids the nasty x86 bug which makes IRET
-; cause a debug exception 1 instruction too late
+;--- clear TF in the copy of flags register onto the stack
 
-isstdtraceX:
-	mov cx,2
-    call iswriteablecseip	;is it ROM?
-    jnc ist_0
-    jmp isstdtrace			;is r/o
-ist_0:    					;is writeable
-    mov bx,[reg_cs]
-%if PM    
-    cmp byte [machine],3
-    jb isstdtrace_1
-    cpu 386
-    mov si,[regh_eip]
-    shl esi,16
-    cpu 8086
-isstdtrace_1:
-%endif
-	mov si,[reg_ip]
-%if PM    
-    test byte [bCSAttr],40h
-    jz isstdtrace_2
-    cpu 386
-    add esi,2
-    jmp isstdtrace_3
-    cpu 8086
-isstdtrace_2:    
-%endif
-	add si,2
-isstdtrace_3:    
-	call pp11x				;process the INT 
-    jmp tt1_3
+clear_tf_onstack proc
+	push es
+	mov es,[regs.rSS]
+if PM
+	mov bx,es
+	call getselattr
+	jz @F
+	.386
+	mov ebx,dword ptr [regs.rSP]
+	and byte ptr es:[ebx+1],not 1
+	jmp ctos_1
+	.8086
+@@:
+endif
+	mov bx,[regs.rSP]
+	and byte ptr es:[bx+1],not 1
+ctos_1:
+	pop es
+	ret
+clear_tf_onstack endp
 
-;--- TM==1, single-step into the INT
+;--- Print message about unexpected interrupt, dump registers, and end
+;--- command.  This code is also used by the G and P commands.
 
-emuint:
-    mov bl,al
-%if PM
-	call ispm
-    jz   emuint_pm
-%endif
-    mov bh,0
-    push ds
-    xor ax,ax
-    mov ds,ax
-    shl bx,1		;stay 8086 compatible in real-mode!
-    shl bx,1
-    lds si,[bx+0]
-    mov al,[si]
-    mov ah,al
-    xor al,0FFh
-    mov [si],al
-    cmp ah,[si]
-    jz isrom
-    mov [si],ah
-    mov bx,ds
-    pop ds
-    call pp11x
-    jmp tt1_3
-isrom:
-	pop ds
-    jmp isstdtrace
-%if PM
-emuint_pm:
-    mov  ax,204h
-    int  31h
-    mov  bx,cx
-    test bl,4			;is it a LDT selector?
-    jnz  emuint_1
-    jmp  isstdtrace
-emuint_1:    
-	mov  si,dx
-    cmp  byte [dpmi32],0
-    jz   emuint_pm16
-    cpu 386
-    mov  esi,edx
-    cpu 8086
-emuint_pm16:
-	call pp11x
-    jmp  tt1_3
-    
-%endif
-
-;	Print message about unexpected interrupt, dump registers, and end
-;	command.  This code is also used by the G and P commands.
-
-tt2:	mov	dx,[run_int]
-	call	int21ah9	;print string
-	cmp	dx,progtrm
-	je	tt3		;if it terminated, skip the registers
-	call	dumpregs
-tt3:	jmp	cmd3		;back to the start
-
-%if PM
-tt2x:	
-	mov	dx,[run_int]
+ue_int:
+	mov dx,[run_int]
 	call int21ah9	;print string
-%if EXCCSIP    
-	mov	dx,excloc
-    call int21ah9
-%endif    
-    jmp cmd3
-%endif    
+	cmp dx,offset progtrm
+	je @F			;if it terminated, skip the registers
+	call dumpregs
+@@:
+	jmp cmdloop		;back to the start
 
-;	U command - disassemble.
+if PM
 
-uu:
-	mov word [lastcmd],lastuu	
-	cmp	al,CR
-	jne	uu1		;if an address was given
-lastuu:    
-%if PM    
-    call getcsattr
-    test ah,40h
-    jz   uu_0
-    cpu 386
-    mov  ecx,[u_addr]
-    add  ecx,1Fh
-    jnc  uu0x
-    mov  ecx,-1
-uu0x:
-	inc  ecx
-uu3_32:    
+;--- unexpected exception occured inside debugger
+
+ue_intx:
+	call unhack
+	mov dx,[run_int]
+	call int21ah9	;print string
+if EXCCSIP
+	mov dx,offset excloc
+	call int21ah9
+endif
+	jmp cmdloop
+endif
+
+;--- U command - disassemble.
+
+uu proc
+	mov [lastcmd],offset lastuu	
+	cmp al,CR
+	jne uu1		;if an address was given
+lastuu:
+if PM
+	call getcsattr
+	mov [bCSAttr],al
+	jz uu_0
+	.386
+	mov ecx,dword ptr [u_addr]
+	add ecx,1Fh
+	jnc @F
+	mov ecx,-1
+@@:
+	inc ecx
+uu3_32:
 	push ecx
 	push edx
-	mov	byte [disflags],0
-	call disasm
-	pop	ebx
-	pop	ecx
-	mov	eax,[u_addr]
-	mov	edx,eax
-	sub	eax,ecx		;current position - end
-	sub	ebx,ecx		;previous position - end
-	cmp	eax,ebx
-	jnb	uu3_32		;if we haven't reached the goal
-    ret
-    cpu 8086
+	call disasm1
+	pop ebx
+	pop ecx
+	mov eax,dword ptr [u_addr]
+	mov edx,eax
+	sub eax,ecx		;current position - end
+	sub ebx,ecx		;previous position - end
+	cmp eax,ebx
+	jnb uu3_32		;if we haven't reached the goal
+	ret
+	.8086
 uu_0:
-%endif    
-	mov	cx,[u_addr]
-	add	cx,1fh
-	jnc	uu2		;if no overflow
-	mov	cx,-1
-	jmp	uu2
+endif
+	mov cx,word ptr [u_addr]
+	add cx,1fh
+	jnc uu2		;if no overflow
+	mov cx,-1
+	jmp uu2
 
-uu1:	mov	cx,20h		;default length
-	mov	bx,[reg_cs]
-	call	getrangeX	;get address range into dx:bx
-	call	chkeol		;expect end of line here
-	mov	[u_addr+4],bx
-	mov	[u_addr],dx
+uu1:
+	mov cx,20h		;default length
+	mov bx,[regs.rCS]
+	call getrangeX	;get address range into bx:(e)dx
+	call chkeol		;expect end of line here
+if PM
+	sizeprf			;mov [u_addr+0],edx
+endif
+	mov [u_addr+0],dx
+	mov [u_addr+4],bx
 
-;	At this point, cx holds the last address, and dx the address.
+;--- At this point, cx holds the last address, and dx the address.
 
 uu2:
 	inc cx
 uu3:
-	push	cx
-	push	dx
-	mov	byte [disflags],0
-	call	disasm		;do it
-	pop	bx
-	pop	cx
-	mov	ax,[u_addr]
-	mov	dx,ax
-	sub	ax,cx		;current position - end
-	sub	bx,cx		;previous position - end
-	cmp	ax,bx
-	jnb	uu3		;if we haven't reached the goal
-uu4:	ret
+	push cx
+	push dx
+	call disasm1	;do it
+	pop bx
+	pop cx
+	mov ax,[u_addr]
+	mov dx,ax
+	sub ax,cx		;current position - end
+	sub bx,cx		;previous position - end
+	cmp ax,bx
+	jnb uu3		;if we haven't reached the goal
+	ret
+uu endp
 
 
 lockdrive:
-    push ax
-    push bx
-    push cx
-    push dx
-    mov bl,al
-    inc bl
-    mov bh,0
-    mov cx,084Ah
-    mov dx,0001h
-    mov ax,440Dh
-    int 21h
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
+	push ax
+	push bx
+	push cx
+	push dx
+	mov bl,al
+	inc bl
+	mov bh,0
+	mov cx,084Ah
+	mov dx,0001h
+	mov ax,440Dh
+	int 21h
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	ret
 unlockdrive:
-    push ax
-    push bx
-    push cx
-    push dx
-    mov bl,al
-    inc bl
-    mov bh,0
-    mov cx,086Ah
-    mov dx,0001h
-    mov ax,440Dh
-    int 21h
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-
-;	W command - write a program, or disk sectors, to disk.
-
-ww:	call	parselw		;parse it
-	jz	ww4		;if request to write program
-%if NOEXTENDER
-	call ispm
-    jnz ww0_rm
-    call isextenderavailable
-    jnc ww0_rm
-	mov dx,nodosext
-    jmp int21ah9
-ww0_rm:    
-%endif
-	cmp [cs:usepacket],byte 2
-    jb  ww0_1
-    call lockdrive
-    mov dl,al
-    inc dl
-    mov si,6001h	;write, assume "file data"
-    mov ax,7305h
-    stc
-    int 21h			;use int 21h here, not doscall
-    pushf
-    call unlockdrive
-    popf
-    jmp ww0_2
-ww0_1:
-	int	26h
-ww0_2:
-	mov	dx,writing
-ww1:
-	mov	bx,ss		;restore segment registers
-	mov	ds,bx
-	mov	sp,[savesp]
-	mov	es,bx
-	jnc	ww3		;if no error
-	cmp	al,0ch
-	jbe	ww2		;if in range
-	mov	al,0ch
-ww2:	cbw
-	shl	ax,1
-	xchg	si,ax
-	mov	si,[si+dskerrs]
-	mov	di,line_out
-	call showstring
-	mov	si,dx
-	call showstring
-	mov	si,drive
-	call showstring
-	call putsline
-ww3:	jmp	cmd3		;can't ret because stack is wrong
-
-;	Write to file.  First check the file extension.
-
-ww4:	mov	al,[fileext]	;get flags of file extension
-	test	al,EXT_EXE + EXT_HEX
-	jz	ww5		;if not EXE or HEX
-	mov	dx,nowhexe
-	jmp	ww6
-
-ww5:	cmp	al,0
-	jnz	ww7		;if extension exists
-	mov	dx,nownull
-ww6:	jmp	ww16
-
-;	File extension is OK; write it.  First, create the file.
-
-ww7:
-%if PM
-	call ispm
-    jnz ww7_1
-    mov dx,nopmsupp
-    call int21ah9
-    ret
-ww7_1:    
-%endif
-
-	mov	bp,line_out
-	cmp	dh,0feh
-	jb	ww8		;if dx < fe00h
-	sub	dh,0feh		;dx -= 0xfe00
-	add	bx,0fe0h
-ww8:	mov	[bp+10],dx	;save lower part of address in line_out+10
-	mov	si,bx		;upper part goes into si
-	mov	ah,3ch		;create file
-	xor	cx,cx		;no attributes
-	mov	dx,DTA
-	call doscall
-	jc	ww15		;if error
-	push	ax		;save file handle
-
-;	Print message about writing.
-
-	mov	dx,wwmsg1
-	call	int21ah9	;print string
-	mov	ax,[reg_bx]
-	cmp	ax,10h
-	jb	ww9		;if not too large
-	xor	ax,ax		;too large:  zero it out
-ww9:	mov	[bp+8],ax
-	or	ax,ax
-	jz	ww10
-	add	al,90h		;convert to hex and print
-	daa
-	adc	al,40h
-	daa
-	stosb
-ww10:	mov	ax,[reg_cx]
-	mov	[bp+6],ax
-	call hexword
-	call	puts		;print size
-	mov	dx,wwmsg2
-	call	int21ah9	;print string
-
-;	Now write the file.  Size remaining is in line_out+6.
-
-	pop	bx		;recover file handle
-	mov	dx,[bp+10]	;address to write from is si:dx
-ww11:	mov	ax,0fe00h
-	sub	ax,dx
-	cmp	byte [bp+8],0
-	jnz	ww12		;if more than 0fe00h bytes remaining
-	cmp	ax,[bp+6]
-	jb	ww12		;ditto
-	mov	ax,[bp+6]
-ww12:	
-	xchg ax,cx		;mov cx,ax
-	mov	ds,si
-	mov	ah,40h		;write to file
-	int 21h			;use INT, not doscall
-	push ss			;restore DS
-	pop	ds
-	cmp	ax,cx
-	jne	ww13		;if disk full
-	xor	dx,dx		;next time write from xxxx:0
-	add	si,0fe0h	;update segment pointer
-	sub	[bp+6],cx
-	lahf
-	sbb	byte [bp+8],0
-	jnz	ww11		;if more to go
-	sahf
-	jnz	ww11		;ditto
-	jmp	ww14		;done
-
-ww13:	mov	dx,diskful
-	call	int21ah9	;print string
-	mov	ah,41h		;unlink file
-	mov	dx,DTA
-    call doscall
-
-;	Close the file.
-
-ww14:	mov	ah,3eh		;close file
-	int	21h
+	push ax
+	push bx
+	push cx
+	push dx
+	mov bl,al
+	inc bl
+	mov bh,0
+	mov cx,086Ah
+	mov dx,0001h
+	mov ax,440Dh
+	int 21h
+	pop dx
+	pop cx
+	pop bx
+	pop ax
 	ret
 
-;	Error opening file.  This is also called by the load command.
+;--- W command - write a program, or disk sectors, to disk.
 
-ww15:	cmp	ax,2
-	mov	dx,doserr2	;File not found
-	je	ww16
-	cmp	ax,3
-	mov	dx,doserr3	;Path not found
-	je	ww16
-	cmp	ax,5
-	mov	dx,doserr5	;Access denied
-	je	ww16
-	cmp	ax,8
-	mov	dx,doserr8	;Insufficient memory
-	je	ww16
-	mov	di,wwerr1
+ww proc
+	call parselw	;parse L and W argument format (out: bx:(e)dx=address)
+	jz write_file	;if request to write program
+if NOEXTENDER
+	call ispm
+	jz @F
+	call isextenderavailable	;in protected-mode, DOS translation needed
+	jnc @F
+	mov dx,offset nodosext
+	jmp int21ah9
+@@:
+endif
+	cmp cs:[usepacket],2
+	jb ww0_1
+	mov dl,al		;A=0,B=1,C=2,...
+	mov si,6001h	;write, assume "file data"
+if VDD
+	mov ax,[hVdd]
+	cmp ax,-1
+	jnz callvddwrite
+endif
+	inc dl			;A=1,B=2,C=3,...
+	call lockdrive
+	mov ax,7305h	;DS:(E)BX->packet
+	stc
+	int 21h			;use int 21h here, not doscall
+	pushf
+	call unlockdrive
+	popf
+	jmp ww0_2
+if VDD
+callvddwrite:
+	mov cx,5
+	add cl,[dpmi32]
+	DispatchCall
+	jmp ww0_2
+endif
+ww0_1:
+	int 26h
+ww0_2:
+	mov dx,offset writing
+ww1::				;<--- entry from ll
+	mov bx,ss		;restore segment registers
+	mov ds,bx
+	mov sp,[savesp]
+	mov es,bx
+	jnc ww3		;if no error
+	cmp al,0ch
+	jbe @F		;if in range
+	mov al,0ch
+@@:
+	cbw
+	shl ax,1
+	xchg si,ax
+	mov al,[si+dskerrs]
+	mov si,offset dskerr0
+	add si,ax
+	mov di,offset line_out
+	call showstring
+	mov si,dx
+	call showstring
+	mov si,offset drive
+	call showstring
+	call putsline
+ww3:
+	jmp cmdloop		;can't ret because stack is wrong
+
+ww endp
+
+;--- Write to file.  First check the file extension.
+;--- size of file is in client's BX:CX, 
+;--- default start address is DS:100h
+
+write_file proc
+	mov al,[fileext]	;get flags of file extension
+	test al,EXT_EXE + EXT_HEX
+	jz @F				;if not EXE or HEX
+	mov dx,offset nowhexe
+	jmp ww6
+@@:
+	cmp al,0
+	jnz ww7		;if extension exists
+	mov dx,offset nownull
+ww6:
+	jmp int21ah9
+
+;--- File extension is OK; write it.  First, create the file.
+
+ww7:
+if PM
+	call ispm
+	jz @F
+	mov dx,offset nopmsupp	;cant write it in protected-mode
+	jmp int21ah9
+@@:
+endif
+	mov bp,offset line_out
+	cmp dh,0feh
+	jb @F			;if dx < fe00h
+	sub dh,0feh		;dx -= 0xfe00
+	add bx,0fe0h
+@@:
+	mov [bp+10],dx	;save lower part of address in line_out+10
+	mov si,bx		;upper part goes into si
+	mov ah,3ch		;create file
+	xor cx,cx		;no attributes
+	mov dx,DTA
+	call doscall
+	jc io_error		;if error
+	push ax			;save file handle
+
+;--- Print message about writing.
+
+	mov dx,offset wwmsg1
+	call int21ah9	;print string
+	mov ax,[regs.rBX]
+	cmp ax,10h
+	jb @F			;if not too large
+	xor ax,ax		;too large:  zero it out
+@@:
+	mov [bp+8],ax
+	or ax,ax
+	jz @F
+	call hexnyb		;convert to hex and print
+@@:
+	mov ax,[regs.rCX]
+	mov [bp+6],ax
 	call hexword
-	mov	dx,wwerr	;Error ____ opening file
-ww16:
-int21ah9:
+	call puts		;print size
+	mov dx,offset wwmsg2
+	call int21ah9	;print string
+
+;--- Now write the file.  Size remaining is in line_out+6.
+
+	pop bx			;recover file handle
+	mov dx,[bp+10]	;address to write from is si:dx
+ww11:
+	mov ax,0fe00h
+	sub ax,dx
+	cmp byte ptr [bp+8],0
+	jnz @F			;if more than 0fe00h bytes remaining
+	cmp ax,[bp+6]
+	jb @F			;ditto
+	mov ax,[bp+6]
+@@:
+	xchg ax,cx		;mov cx,ax
+	mov ds,si
+	mov ah,40h		;write to file
+	int 21h			;use INT, not doscall
+	push ss			;restore DS
+	pop ds
+	cmp ax,cx
+	jne ww13		;if disk full
+	xor dx,dx		;next time write from xxxx:0
+	add si,0fe0h	;update segment pointer
+	sub [bp+6],cx
+	lahf
+	sbb byte ptr [bp+8],0
+	jnz ww11		;if more to go
+	sahf
+	jnz ww11		;ditto
+	jmp ww14		;done
+
+ww13:
+	mov dx,offset diskful
+	call int21ah9	;print string
+	mov ah,41h		;unlink file
+	mov dx,DTA
+	call doscall
+
+;--- Close the file.
+
+ww14:
+	mov ah,3eh		;close file
+	int 21h
+	ret
+
+write_file endp
+
+;--- Error opening file.  This is also called by the load command.
+
+io_error:
+	cmp ax,2
+	mov dx,offset doserr2	;File not found
+	je @F
+	cmp ax,3
+	mov dx,offset doserr3	;Path not found
+	je @F
+	cmp ax,5
+	mov dx,offset doserr5	;Access denied
+	je @F
+	cmp ax,8
+	mov dx,offset doserr8	;Insufficient memory
+	je @F
+	mov di,offset openerr1
+	call hexword
+	mov dx,offset openerr	;Error ____ opening file
+@@:
+int21ah9::
 	mov ah,9
 	call doscall
-    ret
+	ret
 
 
-;	X commands - manipulate EMS memory.
+;--- X commands - manipulate EMS memory.
 ;
-;	Reference:
-;	  http://www.nondot.org/sabre/os/files/MemManagement/LIMEMS41.txt
+;--- Reference:
+;---  http://www.nondot.org/sabre/os/files/MemManagement/LIMEMS41.txt
 
-xx:	cmp	al,'?'
-	je	xhelp		;if a call for help
-	or	al,TOLOWER
-	cmp	al,'a'
-	je	xa		;if XA command
-	cmp	al,'d'
-	je	xd		;if XD command
-	cmp	al,'m'
-	je	xm		;if XM command
-	cmp	al,'r'
-	je	xr		;if XR command
-	cmp	al,'s'
-	jne xx_1
+xx proc
+	cmp al,'?'
+	je xhelp		;if a call for help
+	or al,TOLOWER
+	cmp al,'a'
+	je xa		;if XA command
+	cmp al,'d'
+	je xd		;if XD command
+	cmp al,'m'
+	je xm		;if XM command
+	cmp al,'r'
+	je xr		;if XR command
+	cmp al,'s'
+	jne @F
 	jmp xs		;if XS command
-xx_1:
-	jmp	error
+@@:
+	jmp cmd_error
 
-xhelp:	mov	dx,xhelpmsg
-	jmp	int21ah9	;print string and return
+xhelp:
+	mov dx,offset xhelpmsg
+	jmp int21ah9	;print string and return
+xx endp
 
-;	XA - Allocate EMS.
+;--- XA - Allocate EMS.
 
-xa:	call	emschk
-	call	skipcomma
-	call	getword		;get argument into DX
-	call	chkeol		;expect end of line here
-	mov	bx,dx
-	mov	ah,43h			;allocate handle
-    and bx,bx
-    jnz nonullcnt
-    mov ax,5A00h		;use the EMS 4.0 version to alloc 0 pages
-nonullcnt:    
-	call	emscall
-	xchg	ax,dx		;mov ax,dx
-	mov	di,xaans1
+xa proc
+	call emschk
+	call skipcomma
+	call getword		;get argument into DX
+	call chkeol			;expect end of line here
+	mov bx,dx
+	mov ah,43h			;allocate handle
+	and bx,bx
+	jnz @F
+	mov ax,5A00h		;use the EMS 4.0 version to alloc 0 pages
+@@:
+	call emscall
+	xchg ax,dx			;mov ax,dx
+	mov di,offset xaans1
 	call hexword
-	mov	dx,xaans
-	jmp	int21ah9	;print string and return
+	mov dx,offset xaans
+	jmp int21ah9	;print string and return
+xa endp
 
-;	XD - Deallocate EMS handle.
+;--- XD - Deallocate EMS handle.
 
-xd:	call	emschk
-	call	skipcomma
-	call	getword		;get argument into DX
-	call	chkeol		;expect end of line here
-	mov	ah,45h		;deallocate handle
-	call	emscall
-	xchg	ax,dx		;mov ax,dx
-	mov	di,xdans1
+xd proc
+
+	call emschk
+	call skipcomma
+	call getword	;get argument into DX
+	call chkeol		;expect end of line here
+	mov ah,45h		;deallocate handle
+	call emscall
+	xchg ax,dx		;mov ax,dx
+	mov di,offset xdans1
 	call hexword
-	mov	dx,xdans
-	jmp	int21ah9	;print string and return
+	mov dx,offset xdans
+	jmp int21ah9	;print string and return
 
-;	XR - Reallocate EMS handle.
+xd endp
 
-xr:	call	emschk
-	call	skipcomma
-	call	getword		;get handle argument into DX
-	mov		bx,dx
-	call	skipcomma
-	call	getword		;get count argument into DX
-	call	chkeol		;expect end of line here
-    xchg	bx,dx
-	mov	ah,51h			;reallocate handle
-	call	emscall
-	mov	dx,xrans
-	jmp	int21ah9		;print string and return
+;--- XR - Reallocate EMS handle.
 
-;	XM - Map EMS memory to physical page.
+xr proc
+	call emschk
+	call skipcomma
+	call getword		;get handle argument into DX
+	mov bx,dx
+	call skipcomma
+	call getword		;get count argument into DX
+	call chkeol			;expect end of line here
+	xchg bx,dx
+	mov ah,51h			;reallocate handle
+	call emscall
+	mov dx,offset xrans
+	jmp int21ah9		;print string and return
 
-xm:	call	emschk
-	call	skipcomma
-	call	getword		;get logical page
-	mov	bx,dx		;save it in BX
-	call	skipcomm0
-	call	getbyte		;get physical page
-	push	dx
-	call	skipcomm0
-	call	getword		;get handle into DX
-	call	chkeol		;expect end of line
-	pop	ax		;recover physical page into AL
-	push	ax
-	mov	ah,44h		;function 5 - map memory
-	call	emscall
-	mov	di,xmans1
-	xchg	ax,bx		;mov	al,bl
+xr endp
+
+;--- XM - Map EMS memory to physical page.
+
+xm proc
+	call emschk
+	call skipcomma
+	call getword	;get logical page
+	mov bx,dx		;save it in BX
+	call skipcomm0
+	call getbyte	;get physical page (DL)
+	push dx
+	call skipcomm0
+	call getword	;get handle into DX
+	call chkeol		;expect end of line
+	pop ax			;recover physical page into AL
+	push ax
+	mov ah,44h		;function 5 - map memory
+	call emscall
+	mov di,offset xmans1
+	xchg ax,bx		;mov al,bl
 	call hexbyte
-	add	di,xmans2-xmans1-2
-	pop	ax
+	add di,xmans2-xmans1-2
+	pop ax
 	call hexbyte
-	mov	dx,xmans
-	jmp	int21ah9	;print string and return
+	mov dx,offset xmans
+	jmp int21ah9	;print string and return
 
-;	XS - Print EMS status.
+xm endp
 
-xs:	call	emschk
+;--- XS - Print EMS status.
+
+xs proc
+	call emschk
 	lodsb
-	call	chkeol		;no arguments allowed
+	call chkeol		;no arguments allowed
 
-;	First print out the handles and handle sizes.  This can be done either
-;	by trying all possible handles or getting a handle table.
-;	The latter is preferable, if it fits in memory.
+;   First print out the handles and handle sizes.  This can be done either
+;   by trying all possible handles or getting a handle table.
+;   The latter is preferable, if it fits in memory.
 
-	mov	ah,4bh		;function 12 - get handle count
-	call	emscall
-	cmp	bx,(real_end-line_out)/4
-	jbe	xs3		;if we can do it by getting the table
-	xor	dx,dx		;handle
+	mov ah,4bh		;function 12 - get handle count
+	call emscall
+	cmp bx,(real_end-line_out)/4
+	jbe xs3			;if we can do it by getting the table
+	xor dx,dx		;handle
 
-xs1:	
-	mov	ah,4ch		;function 13 - get handle pages
-	int	67h
-	cmp	ah,83h
-	je	xs2		;if no such handle
-	or	ah,ah
-    jz  xs1_1
-	jmp	ce1	;if other error
-xs1_1:    
-	xchg	ax,bx		;mov ax,bx
-	call	hndlshow
-xs2:	inc	dl		;end of loop
-	jnz	xs1		;if more to be done
-	jmp	xs5		;done with this part
+xs1:
+	mov ah,4ch		;function 13 - get handle pages
+	int 67h
+	cmp ah,83h
+	je xs2			;if no such handle
+	or ah,ah
+	jz @F
+	jmp ems_err		;if other error
+@@:
+	xchg ax,bx		;mov ax,bx
+	call hndlshow
+xs2:
+	inc dl			;end of loop
+	jnz xs1			;if more to be done
+	jmp xs5			;done with this part
 
-;	Get the information in tabular form.
+;--- Get the information in tabular form.
 
-xs3:	mov	ah,4dh		;function 14 - get all handle pages
-	mov	di,line_out
-	call	emscall
-    and bx,bx
-    jz xs5
-	mov	si,di
-xs4:	lodsw
-	xchg	ax,dx
+xs3:
+	mov ah,4dh		;function 14 - get all handle pages
+	mov di,offset line_out
+	call emscall
+	and bx,bx
+	jz xs5
+	mov si,di
+xs4:
 	lodsw
-	call	hndlshow
-	dec	bx
-	jnz	xs4		;if more to go
+	xchg ax,dx
+	lodsw
+	call hndlshow
+	dec bx
+	jnz xs4		;if more to go
 
-xs5:	mov	dx,crlf
-	call	int21ah9	;print string
+xs5:
+	mov dx,offset crlf
+	call int21ah9	;print string
 
-;	Next print the mappable physical address array.
-;	The size of the array shouldn't be a problem.
+;   Next print the mappable physical address array.
+;   The size of the array shouldn't be a problem.
 
-	mov	ax,5800h	;function 25 - get mappable phys. address array
-	mov	di,line_out	;address to put array
-	call	emscall
-	mov	dx,xsnopgs
-    jcxz xs7        ;NO mappable pages!
-    
-	mov	si,di
+	mov ax,5800h	;function 25 - get mappable phys. address array
+	mov di,offset line_out	;address to put array
+	call emscall
+	mov dx,offset xsnopgs
+	jcxz xs7		;NO mappable pages!
+
+	mov si,di
 xs6:
-    push cx
+	push cx
 	lodsw
-	mov	di,xsstr2b
+	mov di,offset xsstr2b
 	call hexword
 	lodsw
-	mov	di,xsstr2a
+	mov di,offset xsstr2a
 	call hexbyte
-	mov	dx,xsstr2
-	call	int21ah9	;print string
-	pop	cx		;end of loop
-    test cl,1
-    jz xs_nonl
-	mov	dx,crlf		;blank line
+	mov dx,offset xsstr2
+	call int21ah9	;print string
+	pop cx			;end of loop
+	test cl,1
+	jz xs_nonl
+	mov dx,offset crlf		;blank line
 	call int21ah9	;print string
 xs_nonl:
 	loop xs6
-	mov	dx,crlf		;blank line
+	mov dx,offset crlf		;blank line
 xs7:
 	call int21ah9	;print string
 
-;	Finally, print the cumulative totals.
+;--- Finally, print the cumulative totals.
 
-	mov	ah,42h		;function 3 - get unallocated page count
-	call	emscall
-	mov	ax,dx		;total pages available
-	sub	ax,bx		;number of pages allocated
-	mov	bx,xsstrpg
-	call	sumshow		;print the line
-	mov	ah,4bh		;function 12 - get handle count
-	call	emscall
-	xchg	ax,bx		;ax = number of handles allocated
-	mov	dx,0ffh		;total number of handles
-	mov	bx,xsstrhd
-	call	sumshow		;print the line
-	ret			;done
+	mov ah,42h		;function 3 - get unallocated page count
+	call emscall
+	mov ax,dx		;total pages available
+	sub ax,bx		;number of pages allocated
+	mov bx,offset xsstrpg
+	call sumshow	;print the line
+	mov ah,4bh		;function 12 - get handle count
+	call emscall
+	xchg ax,bx		;ax = number of handles allocated
+	mov dx,0ffh		;total number of handles
+	mov bx,offset xsstrhd
+	call sumshow	;print the line
+	ret				;done
 
-;	Call EMS
+xs endp
 
-emscall:
-%if PM
+;--- Call EMS
+
+emscall proc
+if PM
 	call ispm
-    jnz ems_rm
-    cpu 286
-    push word [cs:pspdbg]
-    push 67h
-    call intcall
-    jmp ems_call_done
-    cpu 8086
-ems_rm:    
-%endif    
-	int	67h
-ems_call_done:    
-	cmp	ah,0
-	jz	echk1		;return if OK
-ce1:
-	mov	al,ah
-	cmp	al,8bh
-	jg	ce2		;if out of range
+	jz ems_rm
+	.286
+	push cs:[pspdbg]
+	push 67h
+	call intcall
+	jmp ems_call_done
+	.8086
+ems_rm:
+endif
+	int 67h
+ems_call_done:
+	and ah,ah	;error?
+	js ems_err
+	ret			;return if OK
+
+emscall endp
+
+;--- ems error in AH
+
+ems_err proc
+	mov al,ah
+	cmp al,8bh
+	jg ce2		;if out of range
 	cbw
-	mov	bx,ax
-	shl	bx,1
-	mov	dx,[emserrs+100h+bx]
-	or	dx,dx
-	jnz	ce3		;if there's a word there
-ce2:	mov	di,emserrxa
+	mov bx,ax
+	shl bx,1
+	mov si,[emserrs+100h+bx]
+	or si,si
+	jnz ce3		;if there's a word there
+ce2:
+	mov di,offset emserrxa
 	call hexbyte
-	mov	dx,emserrx
-ce3:	jmp	prnquit		;print string and quit
+	mov si,offset emserrx
+ce3:
+	mov di,offset line_out
+	call showstring
+	call putsline
+	jmp cmdloop
 
-;	Check for EMS
+ems_err endp
 
-emschk:
-%if PM
+;--- Check for EMS
+
+emschk proc
+if PM
 	call ispm
-    jnz emschk1
-    mov bl,67h
-    mov ax,0200h
-    int 31h
-    mov ax,cx
+	jz emschk1
+	mov bl,67h
+	mov ax,0200h
+	int 31h
+	mov ax,cx
 	or ax,dx
-    jz echk2
-    jmp emschk2
+	jz echk2
+	jmp emschk2
 emschk1:
-%endif
+endif
 	push es
-	mov	ax,3567h	;get interrupt vector 67h
+	mov ax,3567h	;get interrupt vector 67h
 	int 21h
-    mov ax,es
-    pop es
-    or  ax,bx
-    jz  echk2
+	mov ax,es
+	pop es
+	or ax,bx
+	jz echk2
 emschk2:
-    mov ah,46h		;get version
-;    int 67h
-    call emscall
-    and ah,ah
-    jnz echk2
-echk1:
+	mov ah,46h		;get version
+;	int 67h
+	call emscall
+	and ah,ah
+	jnz echk2
 	ret
 echk2:
-	mov	dx,emsnot
-	jmp	prnquit		;print string and quit
+	mov dx,offset emsnot
+	jmp prnquit		;print string and quit
+emschk endp
 
-;	HNDLSHOW - Print XS line giving the handle and pages allocated.
+;--- HNDLSHOW - Print XS line giving the handle and pages allocated.
 ;
-;	Entry	DX	Handle
-;		AX	Number of pages
+;--- Entry   DX Handle
+;            AX Number of pages
 ;
-;	Exit	Line printed
+;    Exit    Line printed
 ;
-;	Uses	ax,cl,di.
+;    Uses    ax,cl,di.
 
-hndlshow:
-	mov	di,xsstr1b
+hndlshow proc
+	mov di,offset xsstr1b
 	call hexword
-	mov	ax,dx
-	mov	di,xsstr1a
+	mov ax,dx
+	mov di,offset xsstr1a
 	call hexword
-	push	dx
-	mov	dx,xsstr1
-	call	int21ah9	;print string
-	pop	dx
+	push dx
+	mov dx,offset xsstr1
+	call int21ah9	;print string
+	pop dx
 	ret
+hndlshow endp
 
-;	SUMSHOW - Print summary line for XS command.
+;--- SUMSHOW - Print summary line for XS command.
 ;
-;	Entry	AX	Number of xxxx's that have been used
-;		DX	Total number of xxxx's
-;		BX	Name of xxxx
+;---Entry    AX Number of xxxx's that have been used
+;            DX Total number of xxxx's
+;            BX Name of xxxx
 ;
-;	Exit	String printed
+;   Exit     String printed
 ;
-;	Uses	AX, CX, DX, DI
+;   Uses     AX, CX, DX, DI
 
-sumshow:mov	di,xsstr3
-	push	di
-	call	trimhex
-	xchg	ax,dx		;mov ax,dx
-	mov	di,xsstr3a
-	call	trimhex
-	pop	dx		;mov dx,xsstr3
-	call	int21ah9	;print string
-	mov	dx,bx
-	call	int21ah9	;print string
-	mov	dx,xsstr4
-	jmp	int21ah9	;print string and return
+sumshow proc
+	mov di,offset xsstr3
+	push di
+	call trimhex
+	xchg ax,dx		;mov ax,dx
+	mov di,offset xsstr3a
+	call trimhex
+	pop dx			;mov dx,xsstr3
+	call int21ah9	;print string
+	mov dx,bx
+	call int21ah9	;print string
+	mov dx,offset xsstr4
+	jmp int21ah9	;print string and return
 
-;	TRIMHEX - Print word without leading zeroes.
-;
-;	Entry	AX	Number to print
-;		DI	Where to print it
-;
-;	Uses	AX, CX, DI.
+sumshow endp
 
-trimhex:
+;   TRIMHEX - Print word without leading zeroes.
+;
+;   Entry    AX Number to print
+;            DI Where to print it
+;
+;   Uses     AX, CX, DI.
+
+trimhex proc
 	call hexword
-	sub	di,4		;back up DI to start of word
-	mov	cx,3
-	mov	al,'0'
-tx1:	scasb
-	jne	tx2		;return if not a '0'
-	mov	byte [di-1],' '
-	loop	tx1
-tx2:
+	sub di,4		;back up DI to start of word
+	mov cx,3
+	mov al,'0'
+@@:
+	scasb
+	jne @F			;return if not a '0'
+	mov byte ptr [di-1],' '
+	loop @B
+@@:
 	ret
+trimhex endp
 
-;	Error handlers.
+;--- syntax error handler.
+;--- in: SI=???
 
-error:	mov	cx,si
-	sub	cx,line_in+4
-	add	cx,[promptlen]
-	cmp	cx,127
-	ja	err2		;if we're really messed up
-	inc	cx		;number of spaces to skip
-	mov	dl,' '
-err1:	mov	ah,2		;display output
-	int	21h
-	loop	err1
-err2:	mov	dx,errcarat
-	call	int21ah9	;print string
-	jmp	[errret]
+cmd_error proc
+	mov cx,si
+	sub cx,offset line_in+4
+	add cx,[promptlen]
+	cmp cx,127
+	ja err2			;if we're really messed up
+	inc cx			;number of spaces to skip
+	mov dl,' '
+@@:
+	mov ah,2		;display output
+	int 21h
+	loop @B
+err2:
+	mov dx,offset errcarat
+	call int21ah9	;print string
+	jmp [errret]
+cmd_error endp
 
-;	FREEMEM - cancel child process
+;--- FREEMEM - cancel child process
 
-freemem:
-	mov	[reg_cs],cs
-	mov	word [reg_ip],fmem2
-	mov	[reg_ss],ss
-	push	ax
-	mov	[reg_sp],sp	;save sp-2
-	pop	ax
-	call	run
+freemem proc
+	mov [regs.rCS],cs
+	mov [regs.rIP],offset fmem2
+if PM
+	xor ax,ax
+	mov [regs.rIP+2],ax
+	mov [regs.rSP+2],ax
+endif
+	mov [regs.rSS],ss
+	push ax
+	mov [regs.rSP],sp	;save sp-2
+	pop ax
+	call run
 	ret
 fmem2:
-	mov	ax,4c00h	;quit
-	int	21h
+	mov ax,4c00h	;quit
+	int 21h
+freemem endp
 
 ;--- this is called by "run"
 ;--- better don't use INTs inside
+;--- set debuggee's INT 23/24
 
-setint2324:
-%if PM
+setint2324 proc
+	mov si,offset run2324
+if PM
 	call ispm
-    jz	setint2324pm
-%endif    
-    push es
-    push di
-    push si
-    
-    xor di,di
-    mov es,ax
-    mov di,23h*4
-    mov si,run2324
-    movsw
+	jnz si2324pm
+endif
+	push es
+
+	xor di,di
+	mov es,di
+	mov di,23h*4
 	movsw
-    movsw
-    movsw
-    
-    pop si
-    pop di
-    pop es
-    ret
-%if PM    
-setint2324pm:
-	mov dx,[run2324+4+0]
-	mov cx,[run2324+4+2]
-    mov bl,24h
-    mov ax,201h
-    int 31h
-	mov dx,[run2324+0+0]
-	mov cx,[run2324+0+2]
-    mov bl,23h
-    mov ax,201h
-    int 31h
-    ret
-%endif
+	movsw
+	movsw
+	movsw
 
-;	This is the routine that starts up the running program.
+if PM
+	call hook2f
+endif
 
-run:	
+	pop es
+	ret
+if PM
+si2324pm:
+	mov bx,0223h
+@@:
+	sizeprf		;mov edx,[si+0]
+	mov dx,[si+0]
+	mov cx,[si+4]
+	mov ax,205h
+	int 31h
+	add si,6
+	inc bl
+	dec bh
+	jnz @B
+	ret
+endif
+setint2324 endp
+
+;--- This is the routine that starts up the running program.
+
+run proc
 	call seteq		;set CS:IP to '=' address
-	mov	bx,[pspdbe]
-    call setpsp		;set PSP of debuggee
-	call setint2324
-    
-	mov	[run_sp],sp	;save stack position
-	sub	sp,[spadjust]
-	mov	[SPSAV],sp
-	cli
-    cmp [machine],byte 3
-    jb  no386
-    cpu 386
-    mov fs,[reg_fs]
-    mov gs,[reg_gs]
-    mov sp,regshi
-    pop ax
-    pop bx
-    pop cx		;save hiword(ecx) for later
-    pop dx
-    pop bp
-    pop bp
-    pop si
-    pop di
-    shl ecx,16
-    mov cl,16
-    shl eax,cl
-    shl ebx,cl
-    shl edx,cl
-    shl ebp,cl
-    shl esi,cl
-    shl edi,cl
-    cpu 8086
-no386:
-	mov	sp,regs
-	pop	ax
-	pop	bx
-	pop	cx
-	pop	dx
-	pop	bp		;we'll get sp later
-	pop	bp
-	pop	si
-	pop	di
-	pop	es  	;temporary load DS value into ES (to make sure it is valid)
-	pop	es		;now load the true value for ES
-	pop	ss
-    cmp byte [machine],3
-    jnc doiretd
-	mov	sp,[reg_sp]	;restore program stack
-	mov [bInDbg],byte 0
-	push	word [reg_fl]
-	push	word [reg_cs]
-	push	word [reg_ip]
-    test	byte [reg_fl+1],2	;IF set?
-    jz		ifcleared16
-    sti				;required for ring3 protected mode if IOPL==0
-ifcleared16:
-	mov ds,[reg_ds]
-	iret			;jump to program
-    cpu 386
-doiretd:    
-    mov sp,[regh_esp]
-    shl esp,16
-	mov	sp,[reg_sp]	;restore program stack
-	mov [bInDbg],byte 0
-	push	word [regh_efl]
-	push	word [reg_fl]
-    push	0
-	push	word [reg_cs]
-	push	word [regh_eip]
-	push	word [reg_ip]
-    test	byte [reg_fl+1],2	;IF set?
-    jz		ifcleared32
-    sti				;required for ring3 protected mode if IOPL==0
-ifcleared32:    
-	mov ds,[reg_ds]
-	iretd
-    cpu 8086
+	mov bx,[pspdbe]
+	call setpsp		;set debuggee's PSP
+	call setint2324	;set debuggee's int 23/24
 
-;	Interrupt 22 (program termination) handler.
+	mov [run_sp],sp	;save stack position
+	sub sp,[spadjust]
+	mov ds:[SPSAV],sp
+	cli
+	mov sp,offset regs
+	cmp [machine],3
+	jb no386
+	.386
+	popad
+	mov fs,[regs.rFS]
+	mov gs,[regs.rGS]
+	jmp loadsegs
+	.8086
+no386:
+	pop di
+	pop si	;skip hi edi
+	pop si
+	pop bp	;skip hi esi
+	pop bp
+	add sp,6;skip hi ebp+reserved
+	pop bx
+	pop dx	;skip hi ebx
+	pop dx
+	pop cx	;skip hi edx
+	pop cx
+	pop ax	;skip hi ecx
+	pop ax
+	add sp,2;skip hi eax
+loadsegs:
+	pop es		;temporary load DS value into ES (to make sure it is valid)
+	pop es		;now load the true value for ES
+	cmp [machine],3
+	jnc doiretd
+	pop ss
+	mov sp,[regs.rSP]	;restore program stack
+	mov [bInDbg],0
+	push [regs.rFL]
+	push [regs.rCS]
+	push [regs.rIP]
+	test byte ptr [regs.rFL+1],2	;IF set?
+	mov ds,[regs.rDS]
+	jz @F
+	sti				;required for ring3 protected mode if IOPL==0
+@@:
+	iret			;jump to program
+	.386
+doiretd:
+	pop ss
+	mov esp,dword ptr [regs.rSP]
+	mov [bInDbg],0
+	push dword ptr [regs.rFL]
+	push 0
+	push [regs.rCS]
+	push dword ptr [regs.rIP]
+	test byte ptr [regs.rFL+1],2	;IF set?
+	mov ds,[regs.rDS]
+	jz @F
+	sti				;required for ring3 protected mode if IOPL==0
+@@:
+	iretd
+	.8086
+run endp
+
+;--- debugger's int 22h (program termination) handler.
+;--- there's no need to preserve registers.
 
 int22:
 	cli
-	mov	word [cs:run_int],progtrm	;remember interrupt type
-	mov	word [cs:lastcmd],dmycmd
-%if PM
-	mov sp,[cs:InDosSegm]
-    mov word [cs:pInDOS+2],sp
-	mov sp,[cs:SDASegm]
-    mov word [cs:pSDA+2],sp
-%endif
-    mov sp,cs
-    mov ss,sp
-	jmp	intrtn1		;jump to register saving routine (sort of)
+	mov cs:[run_int],offset progtrm	;remember interrupt type
+	mov cs:[lastcmd],offset dmycmd
+if PM
+	mov ax,cs:[InDosSegm]
+	mov word ptr cs:[pInDOS+2],ax	;restore to real-mode far16 format
+	mov ax,cs:[SDASegm]
+	mov word ptr cs:[pSDA+2],ax		;restore to real-mode far16 format
+endif
+	mov ax,cs
+	mov ss,ax
+	mov ds,ax
+	jmp intrtn1		;jump to register saving routine (sort of)
 
-;	Interrupt 0 (divide error) handler.
+;--- Interrupt 0 (divide error) handler.
 
-intr0:	
-	mov	word [cs:run_int],int0msg	;remember interrupt type
-	jmp	intrtn		;jump to register saving routine
+intr0:
+	mov cs:[run_int],offset int0msg	;remember interrupt type
+	jmp intrtn		;jump to register saving routine
 
-    
-;	Interrupt 1 (single-step interrupt) handler.
+;--- Interrupt 1 (single-step interrupt) handler.
 
-intr1:	mov	word [cs:run_int],int1msg	;remember interrupt type
-	jmp	intrtn		;jump to register saving routine
-    
-;	Interrupt 3 (breakpoint interrupt) handler.
+intr1:
+	mov cs:[run_int],offset int1msg	;remember interrupt type
+	jmp intrtn		;jump to register saving routine
+
+;--- Interrupt 3 (breakpoint interrupt) handler.
 
 intr3:
-	mov	word [cs:run_int],int3msg	;remember interrupt type
-    
-;	Common interrupt routine.
+	mov cs:[run_int],offset int3msg	;remember interrupt type
 
-;	Housekeeping.
+;--- Common interrupt routine.
 
-intrtn:	cli			;just in case
-	pop	word [cs:reg_ip]	;recover things from stack
-	pop	word [cs:reg_cs]
-	pop	word [cs:reg_fl]
-	mov	[cs:reg_ss],ss	;save stack position
-	mov	[cs:reg_sp],sp
-	cmp [cs:machine],byte 3
-    jb  nohesp
-    cpu 386
-    shr	esp,16
-    mov	[cs:regh_esp],sp
-    cpu 8086
-nohesp:    
-	mov	sp,cs		;mov ss,cs
-	mov	ss,sp
-	mov	sp,reg_ss
-intrtn2:
-	push	es
-	push	ds
-	push	di
-	push	si
-	push	bp
-	dec	sp		;we already saved sp
-	dec	sp
-	push	dx
-	push	cx
-	push	bx
-	push	ax
+;--- Housekeeping.
 
-	cmp     [cs:machine],byte 3
-    jb      no386_1
-	mov		word [ss:reg_fs],fs
-	mov		word [ss:reg_gs],gs
-    cpu 386
-    mov		cl,16
-    shr		eax,cl
-    shr		ebx,cl
-    shr		edx,cl
-    shr		ebp,cl
-    shr		esi,cl
-    shr		edi,cl
-    shr		ecx,cl
-	mov		sp,regh_edi+2
-    push	di
-    push	si
-    push	bp
-    dec		sp
-    dec		sp
-    push	dx
-    push	cx
-    push	bx
-    push	ax
-    cpu 8086
-no386_1:
+intrtn proc
+	cli						;just in case
+	pop cs:[regs.rIP]		;recover things from stack
+	pop cs:[regs.rCS]
+	pop cs:[regs.rFL]
+	mov cs:[regs.rSS],ss	;save stack position
+	sizeprf
+	mov cs:[regs.rSP],sp
+	mov sp,cs				;mov ss,cs
+	mov ss,sp
+	mov sp,offset regs.rSS
+intrtn2::			;<--- entry protected-mode
+	push es
+	push ds
+	push ss
+	pop ds
+	cmp [machine],3
+	jb @F
+	.386
+	mov [regs.rFS],fs
+	mov [regs.rGS],gs
 
-intrtn1:
+;--- regs.rDI+4 is dword aligned, so DWORD pushs are safe here
 
-;	Clean up.
+	pushfd
+	popf		;skip LoWord(EFL)
+	pop word ptr [regs.rFL+2]
+	
+	push 0
+	pushf
+	popfd		;clear HiWord(EFL) inside debugger (resets AC flag)
 
-	mov	sp,[cs:run_sp]	;restore running stack
-	cld			;clear direction flag
-	sti			;interrupts back on
-    
-    push	ss
-    pop		ds
+	pushad
+	jmp intrtn1
+	.8086
+@@:
+	push ax
+	push ax
+	push cx
+	push cx
+	push dx
+	push dx
+	push bx
+	push bx
+	sub sp,6
+	push bp
+	push si
+	push si
+	push di
+	push di
+intrtn1::		;<--- entry for int 22
+
+	mov sp,[run_sp]		;restore running stack
+	cld					;clear direction flag
+	sti					;interrupts back on
+
+if PM
+	mov ax,1686h
+	int 2Fh
+	cmp ax,1
+	sbb ax,ax
+	mov [regs.msw],ax	;0000=real-mode, FFFF=protected-mode
+endif
 
 	call getpsp
-    mov  [pspdbe],bx
-    
-	call	getint2324
-    push ds
-    pop es
-	mov	bx,cs
-    call setpsp		;set PSP of debugger
-	and	word [reg_fl],~100h	;clear single-step interrupt
+	mov  [pspdbe],bx
+	call getint2324		;save debuggee's int 23/24, set debugger's int 23/24
 
-    
-	mov [bInDbg],byte 1
-	cmp	word [cs:run_int],progtrm
-    jnz isnotterm
-    mov ah,4Dh
-    int 21h
-    mov di,progexit
-    call hexword
-isnotterm:
+	push ds
+	pop es
+	call setpspdbg		;set debugger's PSP
+	and byte ptr [regs.rFL+1],not 1	;clear single-step interrupt
+
+	mov [bInDbg],1
+	cmp [run_int],offset progtrm
+	jnz @F
+	mov ah,4Dh
+	int 21h
+	mov di,offset progexit
+	call hexword
+@@:
 	ret
+
+intrtn endp
 
 ;--- this is low-level, called by "run"
 ;--- prefer not to use INT 21h inside
+;--- get debuggee's interrupt vectors 23/24
+;--- set debugger's interrupt vectors 23/24
 
-getint2324:
-%if PM
+getint2324 proc
+if PM
 	call ispm
-    jz	getint2324pm
-%endif
+	jnz getint2324pm
+endif
 	push si
-    push di
-    push es
-
-    push ds
-    pop es
-    xor di,di
-    mov ds,di
-    mov di,run2324
-    mov si,23h*4
-    push si
-    movsw       ;save interrupt vector 23h
-    movsw
-    movsw       ;save interrupt vector 24h
-    movsw
-    pop di
-    push es
-    pop ds
-    xor si,si
-    mov es,si
-    mov si,CCIV
-    movsw
-    movsw
-    movsw
-    movsw
-    
-    pop es
-    pop di
-    pop si
-    ret
-%if PM    
-getint2324pm:
-    mov ax,200h
-	mov bl,23h
-    int 31h
-	mov	[run2324+0],dx
-	mov	[run2324+2],cx
-	mov bl,24h
-    int 31h
-	mov	[run2324+4],dx
-	mov	[run2324+6],cx
-    
-    mov ax,201h
-	mov bl,23h
-    mov dx,[CCIV+0]
-    mov cx,[CCIV+2]
-    int 31h
-	mov bl,24h
-    mov dx,[CEIV+0]
-    mov cx,[CEIV+2]
-    int 31h
-	ret
-%endif
-
-;	The next three subroutines concern the handling of INT 23 and 24.
-;	These interrupt vectors are saved and restored when running the
-;	child process, but are not active when DEBUG itself is running.
-;	It is still useful for the programmer to be able to check where INT 23
-;	and 24 point, so these values are copied into the interrupt table
-;	during parts of the c, d, e, m, and s commands, so that they appear
-;	to be in effect.  The e command also copies these values back.
-;	Between calls to dohack and unhack, there should be no calls to DOS,
-;	so that there is no possibility of these vectors being used when
-;	the child process is not running.
-
-;	PREHACK - Set up for interrupt vector substitution.
-;	Entry	es = cs
-;	Exit	ds = cs
-
-prehack:
-	cmp	byte [hakstat],0
-	jnz	ph_err		;if hack status error |||
 	push di
-    push si
-	mov	di,sav2324
-    call prehak1
-    pop si
-    pop di
-    ret
-prehak1:
-%if PM
-	call ispm
-    jz prehak_pm
-%endif    
-	xor	si,si
-	mov	ds,si
-	mov	si,4*23h
+	push es
+
+	push ds
+	pop es
+	xor di,di
+	mov ds,di
+	mov di,offset run2324
+	mov si,23h*4
+	push si
+	movsw		;save interrupt vector 23h
+	movsw
+	movsw		;save interrupt vector 24h
+	movsw
+	pop di
+	push es
+	pop ds
+	xor si,si
+	mov es,si
+	mov si,CCIV	;move from debugger's PSP to IVT
 	movsw
 	movsw
 	movsw
 	movsw
-	push cs
-	pop	ds
+
+	pop es
+	pop di
+	pop si
 	ret
-prehak_pm:
-%if 0
-	push ax
-	push bx
-    push cx
-    push dx
-    mov bl,23h
-	mov ax,200h
-    int 31h
-    mov [di+0],dx
-    mov [di+2],cx
-    mov bl,24h
-    int 31h
-    mov [di+4],dx
-    mov [di+6],cx
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-%endif    
-	push ss
-    pop ds
-    ret
+if PM
+getint2324pm:
+	push di
+	mov di,offset run2324
+	call getcurrI2324
+	pop di
+;	call setdbgI2324
+;	ret
+
+	.286
+setdbgI2324::		;<--- entry
+	pusha
+	mov si,offset dbg2324
+	mov bx,0223h
+sdbg2324_0:
+	lodsw
+	mov dx,ax
+	mov cx,cs
+	mov ax,205h
+	cmp [dpmi32],0
+	jz sdbg2324_1
+	.386
+	push edx
+	movzx edx,dx
+	int 31h
+	pop edx
+	jmp sdbg2324_2
+	.286
+sdbg2324_1:
+	int 31h
+sdbg2324_2:
+	inc bl
+	dec bh
+	jnz sdbg2324_0
+	popa
+	ret
+	.8086
+
+
+getcurrI2324:
+	mov bx,0223h
+gi2324_0:
+	mov ax,204h
+	int 31h
+	cmp [dpmi32],0
+	jz $+3
+	db 66h	;mov [di+0],edx
+	mov [di+0],dx
+	mov [di+4],cx
+	add di,6
+	inc bl
+	dec bh
+	jnz gi2324_0
+	ret
+
+endif
+
+getint2324 endp
+
+;   The next three subroutines concern the handling of INT 23 and 24.
+;   These interrupt vectors are saved and restored when running the
+;   child process, but are not active when DEBUG itself is running.
+;   It is still useful for the programmer to be able to check where INT 23
+;   and 24 point, so these values are copied into the interrupt table
+;   during parts of the c, d, e, m, and s commands, so that they appear
+;   to be in effect.  The e command also copies these values back.
+;   Between calls to dohack and unhack, there should be no calls to DOS,
+;   so that there is no possibility of these vectors being used when
+;   the child process is not running.
+
+;   PREPHACK - Set up for interrupt vector substitution.
+;   Entry   es = cs
+
+prephack proc
+	cmp [hakstat],0
+	jnz ph_err		;if hack status error
+	push di
+	mov di,offset sav2324	;debugger's Int2324
+	call prehak1
+	pop di
+	ret
 ph_err:
-	push	ax
-	push	dx
-	mov	dx,ph_msg
-	call	int21ah9	;print string |||
-	pop	dx
-	pop	ax
-	ret
-
-ph_msg	db	'Error in sequence of calls to hack.',CR,LF,'$'
-
-;	DOHACK - Fake the interrupt vectors 23 and 24.
-;	UNHACK - Restore interrupt vectors 23 and 24 to their original values.
-;		It's OK to do either of these twice in a row.
-;		In particular, the `s' command may do unhack twice in a row.
-;	Entry	ds = cs
-;	Exit	es = cs
-;	Uses	si.
-
-dohack:
-	mov	byte [hakstat],1
-	mov	si,run2324
-	jmp	hak1
-
-unhack:
-	mov	byte [hakstat],0
-	mov	si,sav2324
-hak1:
-%if PM
-	call ispm
-    jz unhack_pm
-%endif    
-    push di
-	xor	di,di
-	mov	es,di
-	mov	di,4*23h
-	movsw
-	movsw
-	movsw
-	movsw
-    pop di
-    push cs
-    pop es
-	ret
-unhack_pm:
-%if 0
 	push ax
-	push bx
-    push cx
-    push dx
-    mov bl,23h
-    mov dx,[si+0]
-    mov cx,[si+2]
-	mov ax,201h
-    int 31h
-    mov bl,24h
-    mov dx,[si+4]
-    mov cx,[si+6]
-    int 31h
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-%else
-	mov [hakstat],byte 0
-%endif    
-	push ss
-    pop es
-    ret
+	push dx
+	mov dx,offset ph_msg	;'error in sequence of calls to hack'
+	call int21ah9	;print string |||
+	pop dx
+	pop ax
+	ret
+prephack endp
 
-InDos:    
+prehak1:
+if PM
+	call ispm
+	jnz prehak_pm	;nothing to do
+endif
 	push ds
 	push si
-    lds si,[pInDOS]
-    cmp byte [si],0
-    pop si
-    pop ds
-    ret
-
-
-;	GETLINE - Print a prompt (address in DX, length in CX) and read a line
-;	of input.
-;	GETLINE0 - Same as above, but use the output line (so far), plus two
-;	spaces and a colon, as a prompt.
-;	GETLINE00 - Same as above, but use the output line (so far) as a prompt.
-;	Entry	CX	Length of prompt (getline only)
-;		DX	Address of prompt string (getline only)
-;
-;		DI	Address + 1 of last character in prompt (getline0 and
-;			getline00 only)
-;
-;	Exit	AL	First nonwhite character in input line
-;		SI	Address of the next character after that
-;	Uses	AH,BX,CX,DX,DI
-
-getline0:
-	mov	ax,'  '		;add two spaces and a colon
-	stosw
-	mov	al,':'
-	stosb
-getline00:
-	mov	dx,line_out
-	mov	cx,di
-	sub	cx,dx
-
-getline:
-	mov	[promptlen],cx	;save length of prompt
-	call bufsetup
-	pushf
-    call stdout
-	popf
-	jc gl5		;if tty input
-    mov word [lastcmd],dmycmd
-
-;	This part reads the input line from a file (in the case of
-;	`debug < file').  It is necessary to do this by hand because DOS
-;	function 0ah does not handle EOF correctly otherwise.  This is
-;	especially important for debug because it traps Control-C.
-
-gl1:
-	mov	cx,[bufend]
-	sub	cx,si		;cx = number of valid characters
-	jz gl3		;if none
-gl2:
-	lodsb
-	cmp	al,CR
-	je gl4		;if end of line
-	cmp	al,LF
-	je gl4		;if eol
-	stosb
-	loop gl2		;if there are more valid characters
-gl3:
-	call fillbuf
-	jnc	gl1		;if we have more characters
-	mov	al,LF
-	cmp	di,line_in+LINE_IN_LEN
-	jb	gl4
-	dec	si
-	dec	di
-gl4:
-	mov	[bufnext],si
-	mov	[notatty],al
-	mov	al,CR
-	stosb
-	mov	cx,di
-	mov	dx,line_in + 2
-	sub	cx,dx
-    call stdout	;print out the received line
-	jmp	gl6		;done
-
-gl5:
-	mov	dx,line_in
-    call InDos
-    jnz rawinput
-	mov	ah,0ah		;buffered keyboard input
-    call doscall
-gl6:
-	mov al,10
-    call stdoutal
-	mov	si,line_in + 2
-	call skipwhite
+	xor si,si
+	mov ds,si
+	mov si,4*23h
+	movsw
+	movsw
+	movsw
+	movsw
+	pop si
+	pop ds
+prehak_pm:
 	ret
+
+ph_msg	db 'Error in sequence of calls to hack.',CR,LF,'$'
+
+;   DOHACK - Fake the interrupt vectors 23 and 24.
+;   UNHACK - Restore interrupt vectors 23 and 24 to their original values.
+;       It's OK to do either of these twice in a row.
+;       In particular, the `s' command may do unhack twice in a row.
+;   Entry   ds = cs
+;   Exit    es = cs
+
+dohack proc
+	push si
+	mov [hakstat],1
+	mov si,offset run2324	;debuggee's interrupt vectors
+if PM
+	call ispm
+	jnz dohack_pm
+endif
+	jmp hak1
+
+if PM
+restdbgi2324:
+	push ss
+	pop es
+	call setdbgI2324
+	ret
+endif
+
+unhack::				;<--- entry
+	mov [hakstat],0
+if PM
+	call ispm
+	jnz restdbgi2324
+endif
+	push si
+	mov si,offset sav2324	;debugger's interrupt vectors
+hak1:
+	push di
+	xor di,di
+	mov es,di
+	mov di,4*23h
+	movsw
+	movsw
+	movsw
+	movsw
+	pop di
+	pop si
+	push cs
+	pop es
+hak_ex:
+	ret
+if PM
+
+;--- set debuggee's int 23/24 pmode
+
+dohack_pm:
+	.286
+	push ss
+	pop es
+	pusha
+	mov bx,0223h
+dhpm_0:
+	mov dx,[si+0+0]
+	mov cx,[si+0+4]
+	mov ax,205h
+	cmp [dpmi32],0
+	jz dhpm_1
+	.386
+	push edx
+	mov edx,[si+0+0]
+	int 31h
+	pop edx
+	jmp dhpm_2
+	.286
+dhpm_1:
+	int 31h
+dhpm_2:
+	add si,6
+	inc bl
+	dec bh
+	jnz dhpm_0
+	popa
+	pop si
+	ret
+	.8086
+endif
+dohack endp
+
+InDos:
+	push ds
+	push si
+	lds si,[pInDOS]
+	cmp byte ptr [si],0
+	pop si
+	pop ds
+	ret
+
 stdoutal:
 	push bx
-    push cx
+	push cx
 	push dx
-    push ax
-    mov cx,1
-    mov dx,sp
-    call stdout
-    pop ax
-    pop dx
-    pop cx
-    pop bx
-    ret
+	push ax
+	mov cx,1
+	mov dx,sp
+	call stdout
+	pop ax
+	pop dx
+	pop cx
+	pop bx
+	ret
+
+fullbsout:
+	mov al,8
+	call stdoutal
+	mov al,20h
+	call stdoutal
+	mov al,8
+	jmp stdoutal
+
+;   GETLINE - Print a prompt (address in DX, length in CX) and read a line
+;   of input.
+;   GETLINE0 - Same as above, but use the output line (so far), plus two
+;   spaces and a colon, as a prompt.
+;   GETLINE00 - Same as above, but use the output line (so far) as a prompt.
+;   Entry   CX  Length of prompt (getline only)
+;       DX  Address of prompt string (getline only)
+;
+;       DI  Address + 1 of last character in prompt (getline0 and
+;           getline00 only)
+;
+;   Exit    AL  First nonwhite character in input line
+;       SI  Address of the next character after that
+;   Uses    AH,BX,CX,DX,DI
+
+getline0:
+	mov ax,'  '		;add two spaces and a colon
+	stosw
+	mov al,':'
+	stosb
+getline00:
+	mov dx,offset line_out
+	mov cx,di
+	sub cx,dx
+
+getline proc
+	mov [promptlen],cx	;save length of prompt
+	call bufsetup
+	pushf
+	call stdout
+	popf
+	jc gl5		;if tty input
+	mov [lastcmd],offset dmycmd
+
+;   This part reads the input line from a file (in the case of
+;   `debug < file').  It is necessary to do this by hand because DOS
+;   function 0ah does not handle EOF correctly otherwise.  This is
+;   especially important for debug because it traps Control-C.
+
+gl1:
+	mov cx,[bufend]
+	sub cx,si		;cx = number of valid characters
+	jz gl3		;if none
+@@:
+	lodsb
+	cmp al,CR
+	je gl4		;if end of line
+	cmp al,LF
+	je gl4		;if eol
+	stosb
+	loop @B		;if there are more valid characters
+gl3:
+	call fillbuf
+	jnc gl1		;if we have more characters
+	mov al,LF
+	cmp di,offset line_in+LINE_IN_LEN
+	jb gl4
+	dec si
+	dec di
+gl4:
+	mov [bufnext],si
+	mov [notatty],al
+	mov al,CR
+	stosb
+	mov cx,di
+	mov dx,offset line_in + 2
+	sub cx,dx
+	call stdout	;print out the received line
+	jmp gl6		;done
+
+gl5:
+	mov dx,offset line_in
+	call InDos
+	jnz rawinput
+	mov ah,0ah		;buffered keyboard input
+	call doscall
+gl6:
+	mov al,10
+	call stdoutal
+	mov si,offset line_in + 2
+	call skipwhite
+	ret
+
 rawinput:
 	push di
-    push ds
-    pop es
-    inc dx
-    inc dx
-    mov di,dx
-rawnext:    
+	push ds
+	pop es
+	inc dx
+	inc dx
+	mov di,dx
+rawnext:
 	mov ah,00h
-    int 16h
-    cmp al,0
-    jz rawnext
-    cmp al,0E0h
-    jz rawnext
-    cmp al,08h
-    jz del_key
-    cmp al,7Fh
-    jz del_key
-    stosb
-    call stdoutal
-    cmp al,0Dh
-    jnz rawnext
-    dec di
+	int 16h
+	cmp al,0
+	jz rawnext
+	cmp al,0E0h
+	jz rawnext
+	cmp al,08h
+	jz del_key
+	cmp al,7Fh
+	jz del_key
+	stosb
+	call stdoutal
+	cmp al,0Dh
+	jnz rawnext
+	dec di
 	sub di,dx
-    mov ax,di
-    mov di,dx
-    mov byte [di-1],al
-    dec dx
-    dec dx
-    pop di
-    jmp gl6
+	mov ax,di
+	mov di,dx
+	mov byte ptr [di-1],al
+	dec dx
+	dec dx
+	pop di
+	jmp gl6
 del_key:
 	cmp di,dx
-    jz  rawnext
+	jz rawnext
 	dec di
-    call fullbsout
-    jmp rawnext
-fullbsout:    
-    mov al,8
-    call stdoutal
-    mov al,20h
-    call stdoutal
-    mov al,8
-    jmp stdoutal
-    
-;	BUFSETUP - Set up buffer reading.  This just means discard an LF
-;	if the last character read (as stored in `notatty') is CR.
-;	Entry	DI	First available byte in input buffer
-;	Exit	SI	Address of next character.
-;	If the input is from a tty, then bufsetup returns with carry set.
+	call fullbsout
+	jmp rawnext
 
-bufsetup:
-	cmp	byte [notatty],0
-	jnz	bs1		;if not a tty
+getline endp
+
+;   BUFSETUP - Set up buffer reading.  This just means discard an LF
+;   if the last character read (as stored in `notatty') is CR.
+;   Entry   DI  First available byte in input buffer
+;   Exit    SI  Address of next character.
+;   If the input is from a tty, then bufsetup returns with carry set.
+
+bufsetup proc
+	cmp [notatty],0
+	jnz bs1		;if not a tty
 	stc
 	ret
 
-bs1:	mov	di,line_in+2
-	mov	si,[bufnext]
-	cmp	si,[bufend]
-	jb	bs2		;if there's a character already
-	call	fillbuf
-	jc	bs4		;if eof
-bs2:	cmp	byte [notatty],CR
-	jne	bs3		;if nothing more to do
-	cmp	byte [si],LF
-	jne	bs3		;if not a line feed
-	inc	si		;skip it
-bs3:	clc
-	ret
-
-bs4:	jmp	qq		;quit:  we've hit an eof
-
-;	FILLBUF - Fill input buffer.  Mostly this is an internal routine
-;	for getline.
-;	Entry	DI	First available byte in input buffer
-;	Exit	SI	Next readable byte (i.e., equal to DI)
-;		Carry flag is set if and only if there is an error (e.g., eof)
-;	Uses	None.
-
-fillbuf:push	ax
-	push	bx
-	push	cx
-	push	dx
-	mov	si,di		;we know this already
-	mov	ah,3fh		;read from file
-	xor	bx,bx
-	mov	cx,line_in+LINE_IN_LEN
-	mov	dx,di
-	sub	cx,dx
-	jz	fb1		;if no more room
-	call doscall
-	jc	fb1		;if error
-	or	ax,ax
-	jz	fb1		;if eof
-	add	ax,dx
+bs1:
+	mov di,offset line_in+2
+	mov si,[bufnext]
+	cmp si,[bufend]
+	jb bs2		;if there's a character already
+	call fillbuf
+	jc bs4		;if eof
+bs2:
+	cmp [notatty],CR
+	jne bs3		;if nothing more to do
+	cmp byte ptr [si],LF
+	jne bs3		;if not a line feed
+	inc si		;skip it
+bs3:
 	clc
-	jmp	fb2
-
-fb1:	xchg	ax,dx		;ax = last valid byte address + 1
-	stc
-
-fb2:	mov	[bufend],ax
-	pop	dx
-	pop	cx
-	pop	bx
-	pop	ax
 	ret
 
-;	PARSECM - Parse command line for C and M commands.
-;	Entry	AL	First nonwhite character of parameters
-;		SI	Address of the character after that
-;	Exit	DS:(E)SI	Address from first parameter
-;		ES:(E)DI	Address from second parameter
-;		(E)CX	Length of address range minus one
+bs4:
+	jmp qq		;quit:  we've hit an eof
 
-parsecm:
-	call prehack
-	mov	bx,[reg_ds]	;get source range
-	xor	cx,cx
-	call getrange
+bufsetup endp
+
+;   FILLBUF - Fill input buffer.  Mostly this is an internal routine
+;   for getline.
+;   Entry   DI  First available byte in input buffer
+;   Exit    SI  Next readable byte (i.e., equal to DI)
+;       Carry flag is set if and only if there is an error (e.g., eof)
+;   Uses    None.
+
+fillbuf proc
+	push ax
+	push bx
+	push cx
+	push dx
+	mov si,di		;we know this already
+	mov ah,3fh		;read from file
+	xor bx,bx
+	mov cx,offset line_in+LINE_IN_LEN
+	mov dx,di
+	sub cx,dx
+	jz fb1			;if no more room
+	call doscall
+	jc fb1			;if error
+	or ax,ax
+	jz fb1			;if eof
+	add ax,dx
+	clc
+	jmp fb2
+
+fb1:
+	xchg ax,dx		;ax = last valid byte address + 1
+	stc
+
+fb2:
+	mov [bufend],ax
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	ret
+fillbuf endp
+
+;   PARSECM - Parse command line for C and M commands.
+;   Entry   AL          First nonwhite character of parameters
+;           SI          Address of the character after that
+;   Exit    DS:(E)SI    Address from first parameter
+;           ES:(E)DI    Address from second parameter
+;           (E)CX       Length of address range minus one
+
+parsecm proc
+	call prephack
+	mov bx,[regs.rDS]	;get source range
+	xor cx,cx
+	call getrange	;get address range into bx:(e)dx bx:(e)cx
 	push bx			;save segment first address
-%if PM
-	cmp byte [bAddr32],0
-    jz  pc_0
-    cpu 386
-    sub ecx,edx
-    push edx		;save offset first address
-    push ecx
-    jmp pc_01
-    cpu 8086
-pc_0:    
-%endif
-	sub	cx,dx		;number of bytes minus one
+if PM
+	cmp [bAddr32],0
+	jz @F
+	.386
+	sub ecx,edx
+	push edx		;save offset first address
+	push ecx
+	jmp pc_01
+	.8086
+@@:
+endif
+	sub cx,dx		;number of bytes minus one
 	push dx
 	push cx
-pc_01:    
+pc_01:
 	call skipcomm0
-	mov	bx,[reg_ds]
-%if PM
-	cmp byte [bAddr32],0
-    jz  pc_1
-    cpu 386
-	call getaddr
-    mov byte [bAddr32],1	;restore bAddr32
-    pop ecx
-    mov edi,ecx
-    add edi,edx
-    jc errorj7
-    call chkeol
-    mov edi,edx
-    mov es,bx
-    pop esi
-    pop ds
-    ret
-    cpu 8086
-pc_1:    
-%endif
-	call getaddr	;get destination address
-	pop	cx
-	mov	di,cx
-	add	di,dx
-	jc	errorj7		;if it wrapped around
-	call chkeol		;expect end of line
-	mov	di,dx
-	mov	es,bx
-	pop	si
-	pop	ds
+	mov bx,[regs.rDS]
+if PM
+	cmp [bAddr32],0
+	jz pc_1
+	.386
+	call getaddr		;get address into bx:(e)dx
+	mov [bAddr32],1		;restore bAddr32
+	pop ecx
+	mov edi,ecx
+	add edi,edx
+	jc errorj7
+	call chkeol
+	mov edi,edx
+	mov es,bx
+	pop esi
+	pop ds
 	ret
+	.8086
+pc_1:
+endif
+	call getaddr	;get destination address into bx:(e)dx
+	pop cx
+	mov di,cx
+	add di,dx
+	jc errorj7		;if it wrapped around
+	call chkeol		;expect end of line
+	mov di,dx
+	mov es,bx
+	pop si
+	pop ds
+	ret
+parsecm endp
 
-errorj7:jmp	error
+errorj7:
+	jmp cmd_error
 
-;	PARSELW - Parse command line for L and W commands.
+;   PARSELW - Parse command line for L and W commands.
 ;
-;	Entry	AL	First nonwhite character of parameters
-;		SI	Address of the character after that
+;   Entry   AL  First nonwhite character of parameters
+;       SI  Address of the character after that
 ;
-;	Exit	If there is at most one argument (program load/write), then the
-;		zero flag is set, and registers are set as follows:
-;		bx:(e)dx	Transfer address
+;   Exit    If there is at most one argument (program load/write), then the
+;       zero flag is set, and registers are set as follows:
+;       bx:(e)dx    Transfer address
 ;
-;		If there are more arguments (absolute disk read/write), then the
-;		zero flag is clear, and registers are set as follows:
+;       If there are more arguments (absolute disk read/write), then the
+;       zero flag is clear, and registers are set as follows:
 ;
-;		DOS versions prior to 3.31:
-;		AL	Drive number
-;		CX	Number of sectors to read
-;		DX	Beginning logical sector number
-;		DS:BX	Transfer address
+;       DOS versions prior to 3.31:
+;       AL  Drive number
+;       CX  Number of sectors to read
+;       DX  Beginning logical sector number
+;       DS:BX   Transfer address
 ;
-;		Later DOS versions:
-;		AL	Drive number
-;		BX	Offset of packet
-;		CX	0FFFFh
+;       Later DOS versions:
+;       AL  Drive number
+;       BX  Offset of packet
+;       CX  0FFFFh
 
-;usepacket:
-; 0: packet is not used (int 25h/26h, cx!=FFFF)
-; 1: packet is used (int 25h/26h, cx==FFFF)
-; 2: packet is used (int 21h, ax=7305h, cx==FFFF)
-usepacket db	0
-
-packet	dw	0,0		;sector number
-	dw	0		;number of sectors to read
-	dw	0,0		;transfer address
-
-parselw:
-	mov	bx,[reg_cs]	;default segment
-	mov	dx,100h		;default offset
-	cmp	al,CR
-	je	plw2		;if no arguments
-	call	getaddr		;get address
-	call	skipcomm0
-	cmp	al,CR
-	je	plw2		;if only one argument
-	push	dx
-	push	bx
-	mov	bx,80h		;max number of sectors to read
-	neg	dx
-	jz	plw1		;if address is zero
-	mov	cl,9
-	shr	dx,cl		;max number of sectors which can be read
-	mov	di,dx
-plw1:	call	getbyte		;get drive number
-	call	skipcomm0
-	push	dx
-	add	dl,'A'
-	mov	[driveno],dl
+parselw proc
+	mov bx,[regs.rCS]	;default segment
+	mov dx,100h		;default offset
+	cmp al,CR
+	je plw2			;if no arguments
+	call getaddr	;get buffer address into bx:(e)dx
+	call skipcomm0
+	cmp al,CR
+	je plw2			;if only one argument
+	push bx			;save segment
+	push dx			;save offset
+	mov bx,80h		;max number of sectors to read
+	neg dx
+	jz plw1			;if address is zero
+	mov cl,9
+	shr dx,cl		;max number of sectors which can be read
+	mov di,dx
+plw1:
+	call getbyte	;get drive number (DL)
+	call skipcomm0
+	push dx
+	add dl,'A'
+	mov [driveno],dl
 	call getdword	;get relative sector number
-	call	skipcomm0
-	push	dx		;save buffer segm
-	push	bx
-	push	si		;in case we find an error
-	call	getword		;get sector count
-	dec	dx
-	cmp	dx,di
-	jae	errorj7		;if too many sectors
-	inc	dx
-	mov	cx,dx
-	call	chkeol		;expect end of line
-	cmp	byte [usepacket],0
-	jnz	plw3		;if new-style packet called for
-	pop	si		;in case of error
-	pop	bx		;high bits of sector number
-	or	bx,bx
-	jnz	errorj7		;if too big
-	pop	dx		;beginning logical sector number
-	pop	ax		;drive number
-	pop	ds		;transfer address
-	pop	bx
-	or	cx,cx		;set nonzero flag
+	call skipcomm0
+	push bx			;save sector number high
+	push dx			;save sector number low
+	push si			;in case we find an error
+	call getword	;get sector count
+	dec dx
+	cmp dx,di
+	jae errorj7		;if too many sectors
+	inc dx
+	mov cx,dx
+	call chkeol		;expect end of line
+	cmp [usepacket],0
+	jnz plw3		;if new-style packet called for
+	pop si			;in case of error
+	pop dx			;get LoWord starting logical sector number 
+	pop bx			;get HiWord 
+	or bx,bx		;just a 16bit sector number possible
+	jnz errorj7		;if too big
+	pop ax			;drive number
+	pop bx			;transfer buffer ofs
+	pop ds			;transfer buffer seg
+	or cx,cx		;set nonzero flag
 plw2:
 	ret
 
-plw3:	pop	bx		;discard si
-	mov	bx,packet
-	pop	word [bx+2]	;sector number
-	pop	word [bx+0]
-	mov	[bx+4],cx	;number of sectors
-	pop	ax		;drive number
-	pop	word [bx+8]	;transfer address
-	pop	word [bx+6]
-	xor	cx,cx
-	dec	cx		;set nonzero flag and make cx = -1
+;--- new style packet, [usepacket] != 0
+
+plw3:
+	pop bx			;discard si
+	mov bx,offset packet
+	pop word ptr [bx].PACKET.secno+0
+	pop word ptr [bx].PACKET.secno+2
+	mov [bx].PACKET.numsecs,cx
+	pop ax			;drive number
+	pop word ptr [bx].PACKET.dstofs
+	pop dx
+	xor cx,cx
+if PM
+	call ispm
+	jz @F
+	cmp [dpmi32],0
+	jz @F
+	.386
+	mov [bx].PACKET32.dstseg,dx
+	movzx ebx,bx
+	shr edx,16		;get HiWord(offset)
+	cmp [bAddr32],1
+	jz @F
+	xor dx,dx
+	.8086
+@@:
+endif
+	mov [bx].PACKET.dstseg,dx	;PACKET.dstseg or HiWord(PACKET32.dstofs)
+	dec cx			;set nonzero flag and make cx = -1
 	ret
+parselw endp
 
-;	PARSE_PT - Parse 'p' or 't' command.
-;	Entry	AL	First character of command
-;		SI	Address of next character
-;	Exit	CX	Number of times to repeat
-;	Uses	AH,BX,CX,DX.
+;   PARSE_PT - Parse 'p' or 't' command.
+;   Entry   AL  First character of command
+;       SI  Address of next character
+;   Exit    CX  Number of times to repeat
+;   Uses    AH,BX,CX,DX.
 
-parse_pt:
-	call	parseql		;process =addr
-	call	skipcomm0	;skip any white space
-	mov	cx,1		;default count
-	cmp	al,CR
-	je	ppt1		;if no count given
-	call	getword
-	call	chkeol		;expect end of line here
-	mov	cx,dx
-ppt1:	
-	call	seteq		;make the = operand take effect
+parse_pt proc
+	call parseql	;get optional <=addr> argument
+	call skipcomm0	;skip any white space
+	mov cx,1		;default count
+	cmp al,CR
+	je @F			;if no count given
+	call getword
+	call chkeol		;expect end of line here
+	mov cx,dx
+	jcxz errorj10	;must be at least 1
+@@:
+;	call seteq		;make the = operand take effect
 	ret
+parse_pt endp
 
-;	PARSEQL - Parse `=' operand for `g', 'p' and `t' commands.
-;	Entry	AL	First character of command
-;		SI	Address of next character
-;	Exit	AL	First character beyond range
-;		SI	Address of the character after that
-;		eqflag	Nonzero if an `=' operand was present
-;		eqladdr	Address, if one was given
-;	Uses	AH,BX,CX,DX.
+;   PARSEQL - Parse `=' operand for `g', 'p' and `t' commands.
+;   Entry   AL  First character of command
+;           SI  Address of next character
+;   Exit    AL  First character beyond range
+;           SI  Address of the character after that
+;           eqflag  Nonzero if an `=' operand was present
+;           eqladdr Address, if one was given
+;   Uses AH,BX,CX,(E)DX.
 
-parseql:
-	mov	byte [eqflag],0	;mark `=' as absent
-	cmp	al,'='
-	jne	peq1		;if no `=' operand
+parseql proc
+	mov [eqflag],0	;mark `=' as absent
+	cmp al,'='
+	jne peq1		;if no `=' operand
 	call skipwhite
-	mov	bx,[reg_cs]	;default segment
-	call	getaddrX	;get the address into bx:(e)dx
-	mov	[eqladdr+0],dx
-%if PM
-    mov word [eqladdr+2],0
-	cmp byte [bAddr32],0
-    jz nohighofs
-    cpu 386
-    mov [eqladdr],edx
-    cpu 8086
-nohighofs:    
-%endif
-	mov	[eqladdr+4],bx
-	mov	byte [eqflag],1
-peq1:	
+	mov bx,[regs.rCS]	;default segment
+	call getaddrX	;get the address into bx:(e)dx
+if PM
+	mov word ptr [eqladdr+2],0
+	cmp [bAddr32],0
+	jz @F
+	db 66h		;mov [eqladdr+0],edx
+@@:
+endif
+	mov [eqladdr+0],dx
+	mov [eqladdr+4],bx
+	inc [eqflag]
+peq1:
 	ret
+parseql endp
 
-;	SETEQ - Copy the = arguments to their place, if appropriate.  (This
-;	is not done immediately, because the 'g' command may have a syntax
-;	error.)
-;	Uses	AX.
+;   SETEQ - Copy the = arguments to their place, if appropriate.  (This
+;   is not done immediately, because the 'g' command may have a syntax
+;   error.)
+;   Uses AX.
 
-seteq:
-	cmp	byte [eqflag],0
-	jz	seq1		;if no `=' operand
-	mov	ax,[eqladdr+0]
-	mov	[reg_ip],ax
-	mov	ax,[eqladdr+2]
-	mov	[regh_eip],ax
-	mov	ax,[eqladdr+4]
-	mov	[reg_cs],ax
-	mov	byte [eqflag],0	;clear the flag
-seq1:
+seteq proc
+	cmp [eqflag],0		;`=' argument given?
+	jz @F
+	mov ax,[eqladdr+0]
+	mov [regs.rIP+0],ax
+	mov ax,[eqladdr+2]
+	mov [regs.rIP+2],ax
+	mov ax,[eqladdr+4]
+	mov [regs.rCS],ax
+	mov [eqflag],0		;clear the flag
+@@:
 	ret
+seteq endp
 
 ;--- get a valid offset for segment in BX
 
-getofsforbx:
-%if PM
-	call	ispm
-    jnz		gofbx_2
-    cmp		byte [machine],3
-    jb		gofbx_2
-    cpu 386
-    push    ax
-    mov		ax,bx
-    call	getattrhigh
-    pop     ax
-    jz		gofbx_2
-    mov		byte [bAddr32],1
-    push	bx
-    call getdword
-    push	bx
-    push	dx
-    pop		edx
-    pop		bx
-    ret
-    cpu 8086
-gofbx_2:    
-%endif
-	call	getword
-	ret
-
-;--- get a valid length for segment in BX
-
-getlenforbx:    
-%if PM
-	call ispm
-    jnz	glfbx_1
-    cmp byte [machine],3
-    jb glfbx_1
-    cpu 386
-    push	ecx
-    lar		ecx,ebx
-    test	ecx,400000h
-    pop		ecx
-    jz		glfbx_1
-    push	dx
-    push	bx
-    call getdword
-    push	bx
-    push	dx
-    pop		ecx
-    pop		bx
-    pop		dx
-    stc
-    jecxz glfbx_2
-    dec ecx
-    add ecx, edx
-    ret
-    cpu 8086
-glfbx_1:
-%endif
-	push	dx
-	call	getword
-	mov	cx,dx
-	pop	dx
-    stc
-	jcxz glfbx_2
-	dec	cx
-	add	cx,dx		;C if it wraps around
-glfbx_2:    
-    ret
-
-
-;	GETRANGE - Get address range from input line.
-;	Entry	AL	First character of range
-;		SI	Address of next character
-;		BX	Default segment to use
-;		CX	Default length to use (or 0 if not allowed)
-;	Exit	AL	First character beyond range
-;		SI	Address of the character after that
-;		BX:(E)DX	First address in range
-;		BX:(E)CX	Last address in range
-;	Uses	AH
-
-getrangeX:
-	push	cx
-    call	getaddrX
-    jmp		getrange_1
-
-getrange:
-	push	cx		;save the default length
-	call	getaddr
-getrange_1:    
-	push	si
-	call	skipwh0
-	cmp	al,','
-	je	gr2		;if an upper bound is given
-	or	al,TOLOWER
-	cmp	al,'l'
-	je	gr3		;if a range is given
-	pop	si		;restore si and cx
-	pop	cx
-	jcxz errorj2x		;if a range is mandatory
-	dec	cx
-	add	cx,dx
-	jnc	gr1		;if no wraparound
-	mov	cx,0ffffh	;go to end of segment
-gr1:
-	dec	si		;restore al
-	lodsb
-	ret
-    
-errorj2x: jmp error
-
-gr2:
-	call skipwhite	;discard the ','
-	or	al,TOLOWER
-	cmp	al,'l'
-	je	gr3		;if a range is given
-	call	skipwh0		;get next nonblank
-%if PM
-    cmp byte [machine],3
-    jb gr2_1
-    cpu 386
-	push edx
-	call getofsforbx
-	mov	ecx,edx
-	pop	edx
-    cmp edx,ecx
-    ja errorj2
-    jmp gr4
-    cpu 8086
-gr2_1:
-%endif
-	push dx
-	call getword
-	mov	cx,dx
-	pop	dx
-	cmp	dx,cx
-	ja	errorj2		;if empty range
-	jmp	gr4
-
-gr3:
-	call	skipcomma	;discard the 'l'
-    call	getlenforbx
-    jc      errorj2
-gr4:
-	add	sp,4		;discard saved cx, si
-	ret
-
-
-;	GETADDR - Get address from input line.
-;	Entry	AL	First character of address
-;		SI	Address of next character
-;		BX	Default segment to use
-;	Exit	AL	First character beyond address
-;		SI	Address of the character after that
-;		BX:(E)DX	Address found
-;	Uses	AH,CX
-
-getaddr:
-	call getaddr_1
-	call verifysegm	;make BX a writeable segment
-    ret
-
-%if PM==0
-errorj2:jmp	error
-%endif
-
-getaddrX:
-getaddr_1:
-%if PM
-	mov byte [bAddr32],0
-	cmp		byte [si-1],'$'
-    jnz 	ga1_1
-	lodsb
-	call	ispm
-    jnz		ga1_1
-    call	getword
-    mov		bx,dx
-    push	ax
-    mov		ax,2
-    int		31h
-    jc		errorj2
-    mov		bx,ax
-    mov		dx,ax
-    pop		ax
-    jmp		ga1_2
-errorj2:jmp	error
-%endif
-ga1_1:
-	call	getofsforbx
-ga1_2:
-	push	si
-	call	skipwh0
-	cmp	al,':'
-	je	ga2		;if this is a segment descriptor
-	pop	si
-	dec	si
-	lodsb
-    ret
-
-ga2:
-	pop	ax		;throw away saved si
-	mov	bx,dx	;mov segment into BX
-ga3:
-	call skipwhite	;skip to next word
-    call	getofsforbx
-	ret
-
-
-;	GETSTR - Get string of bytes.  Put the answer in line_out.
-;		Entry	AL	first character
-;			SI	address of next character
-;		Exit	[line_out] first byte of string
-;			DI	address of last+1 byte of string
-;		Uses	AX,CL,DL,SI
-
-getstr:	mov	di,line_out
-	cmp	al,CR
-	je	errorj2		;we don't allow empty byte strings
-gs1:	cmp	al,"'"
-	je	gs2		;if string
-	cmp	al,'"'
-	je	gs2		;ditto
-	call	getbyte
-	mov	[di],dl		;store the byte
-	inc	di
-	jmp	gs6
-
-gs2:	mov	ah,al		;save quote character
-gs3:	lodsb
-	cmp	al,ah
-	je	gs5		;if possible end of string
-	cmp	al,CR
-	je	errorj2		;if end of line
-gs4:	stosb			;save character and continue
-	jmp	gs3
-
-gs5:	lodsb
-	cmp	al,ah
-	je	gs4		;if doubled quote character
-
-gs6:	call	skipcomm0	;go back for more
-	cmp	al,CR
-	jne	gs1		;if not done yet
-	ret
-
-issymbol:
-	push ax
-    push di
-    push cx
-    mov di,regnames
-    mov cx,16
-	mov ah,[si]
-    and ax,TOUPPER_W
-    cmp byte [si+1],'A'
-    jnc maybenotasymbol
-    repnz scasw
-    jnz notasymbol
-    xor bx,bx
-	sub	di,regnames+2
-getsymlow:    
-	mov	dx,[regs+di]
-	inc	si		;skip over second char
-    clc
-    pop cx
-	pop	di
-    pop ax
-    ret
-maybenotasymbol:
-    cmp al,'E'
-    jnz notasymbol
-    mov al,[si+1]
-    xchg al,ah
-    and ax,TOUPPER_W
-    cmp ax,"IP"
-    jnz isnoteip
-    mov di,14*2
-    jmp iseip
-isnoteip:
-    mov cx,8
-    repnz scasw
-    jnz notasymbol
-    sub di,regnames+2
-iseip:    
-    mov bx,[regshi+di]
-    inc si
-    jmp getsymlow
-notasymbol:
-	pop	cx
-    pop di
-    pop ax
-    stc
-    ret
-
-
-;	GETDWORD - Get (hex) dword from input line.
-;		Entry	AL	first character
-;			SI	address of next character
-;		Exit	BX:DX	dword
-;			AL	first character not in the word
-;			SI	address of the next character after that
-;		Uses	AH,CL
-
-getdword:
-	call issymbol
-    jc gd_0
-    lodsb
-    ret
-gd_0:    
-	call getnyb
-	jc	errorj6		;if error
-	cbw
-	xchg ax,dx
-	xor	bx,bx		;clear high order word
-gd1: 
-	lodsb
-	call getnyb
-	jc	gd3
-	test bh,0f0h
-	jnz	errorj6		;if too big
-	mov	cx,4
-gd2:
-	shl	dx,1		;double shift left
-	rcl	bx,1
-	loop gd2
-	or	dl,al
-	jmp	gd1
-gd3:	
-	ret
-errorj6: jmp error    
-
-;	GETWORD - Get (hex) word from input line.
-;		Entry	AL	first character
-;			SI	address of next character
-;		Exit	DX	word
-;			AL	first character not in the word
-;			SI	address of the next character after that
-;		Uses	AH,CL
-
-getword:
+getofsforbx proc
+if PM
+	push ax		;needed?
+	call getselattr
+	pop ax
+	jz gofbx_2
+	.386
+	mov [bAddr32],1
 	push bx
 	call getdword
-    and bx,bx
-    pop bx
-	jz 	gw_0
-	jmp	errorj2		;if error
-gw_0:    
+	push bx
+	push dx
+	pop edx
+	pop bx
+	ret
+	.8086
+gofbx_2:
+endif
+	call getword
+	ret
+getofsforbx endp
+
+errorj10:
+	jmp cmd_error
+
+;--- a range is entered with the L/ength argument
+;--- get a valid length for segment in BX
+;--- L=0 means 64 kB (at least in 16bit mode)
+
+getlenforbx proc
+if PM
+	call ispm
+	jz glfbx_1
+	cmp [machine],3
+	jb glfbx_1
+	.386
+	push ecx
+	lar ecx,ebx
+	test ecx,400000h	;is segment 32bit?
+	pop ecx
+	jz glfbx_1
+	push dx
+	push bx
+	call getdword
+	push bx
+	push dx
+	pop ecx
+	pop bx
+	pop dx
+	stc
+	jecxz glfbx_2
+	dec ecx
+	add ecx, edx
+	ret
+	.8086
+glfbx_1:
+endif
+	push dx
+	call getword
+	mov cx,dx
+	pop dx
+;   stc
+;	jcxz glfbx_2	;0 means 64k
+	dec cx
+	add cx,dx		;C if it wraps around
+glfbx_2:
+	ret
+getlenforbx endp
+
+;   GETRANGE - Get address range from input line.
+;    a range consists of either start and end address
+;    or a start address, a 'L' and a length.
+;   Entry   AL  First character of range
+;       SI  Address of next character
+;       BX  Default segment to use
+;       CX  Default length to use (or 0 if not allowed)
+;   Exit    AL  First character beyond range
+;       SI  Address of the character after that
+;       BX:(E)DX    First address in range
+;       BX:(E)CX    Last address in range
+;   Uses    AH
+
+getrangeX:
+	push cx
+	call getaddrX
+	jmp getrange_1
+
+getrange proc
+	push cx			;save the default length
+	call getaddr	;get address into bx:(e)dx (sets bAddr32)
+getrange_1::		;<-- entry getrangeX
+	push si
+	call skipcomm0
+	cmp al,' '
+	ja gr2
+	pop si			;restore si and cx
+	pop cx
+	jcxz errorj10	;if a range is mandatory
+if PM
+	cmp [bAddr32],0	;can be 1 only on a 80386+
+	jz gr0
+	.386
+	dec ecx
+	add ecx,edx
+	jnc gr1			;if no wraparound
+	or ecx,-1		;go to end of segment
+	jmp gr1
+gr0:
+endif
+	dec cx
+	add cx,dx
+	jnc gr1			;if no wraparound
+	mov cx,0ffffh	;go to end of segment
+gr1:
+	dec si			;restore al
+	lodsb
 	ret
 
-;	GETBYTE - Get (hex) byte from input line.
-;		Entry	AL	first character
-;			SI	address of next character
-;		Exit	DL	byte
-;			AL	first character not in the word
-;			SI	address of the next character after that
-;		Uses	AH,CL
+gr2:
+	or al,TOLOWER
+	cmp al,'l'
+	je gr3			;if a range is given
+;	call skipwh0	;get next nonblank
+if PM
+	cmp [machine],3
+	jb gr2_1
+	.386
+	push edx
+	call getofsforbx
+	mov ecx,edx
+	pop edx
+	cmp edx,ecx
+	ja errorj2
+	jmp gr4
+	.8086
+gr2_1:
+endif
+	push dx
+	call getword
+	mov cx,dx
+	pop dx
+	cmp dx,cx
+	ja errorj2			;if empty range
+	jmp gr4
+
+gr3:
+	call skipcomma		;discard the 'l'
+	call getlenforbx
+	jc errorj2
+gr4:
+	add sp,4			;discard saved cx, si
+	ret
+getrange endp
+
+errorj2:
+	jmp cmd_error
+
+;   GETADDR - Get address from input line.
+;   Entry   AL  First character of address
+;       SI  Address of next character
+;       BX  Default segment to use
+;   Exit    AL  First character beyond address
+;       SI  Address of the character after that
+;       BX:(E)DX    Address found
+;   Uses    AH,CX
+
+;--- entry getaddrX differs from getaddr in that BX isn't made
+;--- writeable in pmode
+
+getaddr proc
+if PM
+	mov dx,offset verifysegm	;make BX a writeable segment
+	push dx
+endif
+getaddrX::
+if PM
+	mov [bAddr32],0
+	cmp byte ptr [si-1],'$' ;a real-mode segment?
+	jnz ga1_1
+	lodsb
+	call ispm
+	jz ga1_1
+	call getword
+	mov bx,dx
+	push ax
+	mov ax,2
+	int 31h
+	jc errorj2
+	mov bx,ax
+	mov dx,ax
+	pop ax
+	jmp ga1_2
+endif
+ga1_1:
+	call getofsforbx
+ga1_2:
+	push si
+	call skipwh0
+	cmp al,':'
+	je ga2		;if this is a segment descriptor
+	pop si
+	dec si
+	lodsb
+	ret
+
+ga2:
+	pop ax		;throw away saved si
+	mov bx,dx	;mov segment into BX
+ga3:
+	call skipwhite	;skip to next word
+	call getofsforbx
+	ret
+getaddr endp
+
+;   GETSTR - Get string of bytes.  Put the answer in line_out.
+;   Entry   AL first character
+;           SI address of next character
+;   Exit    [line_out] first byte of string
+;           DI address of last+1 byte of string
+;   Uses    AX,CL,DL,SI
+
+getstr proc
+	mov di,offset line_out
+	cmp al,CR
+	je errorj2		;we don't allow empty byte strings
+gs1:
+	cmp al,"'"
+	je gs2		;if string
+	cmp al,'"'
+	je gs2		;ditto
+	call getbyte;byte in DL
+	mov [di],dl	;store the byte
+	inc di
+	jmp gs6
+
+gs2:
+	mov ah,al	;save quote character
+gs3:
+	lodsb
+	cmp al,ah
+	je gs5		;if possible end of string
+	cmp al,CR
+	je errorj2	;if end of line
+gs4:
+	stosb		;save character and continue
+	jmp gs3
+
+gs5:
+	lodsb
+	cmp al,ah
+	je gs4		;if doubled quote character
+gs6:
+	call skipcomm0	;go back for more
+	cmp al,CR
+	jne gs1		;if not done yet
+	ret
+getstr endp
+
+;--- in: AL=first char
+;---     SI->2. char
+;--- out: value in BX:DX
+
+issymbol proc
+	push ax
+	push di
+	push cx
+	mov di,offset regnames
+	mov cx,NUMREGNAMES
+	mov ah,[si]		;get second char of name 
+	and ax,TOUPPER_W
+	cmp byte ptr [si+1],'A'
+	jnc maybenotasymbol
+	repnz scasw
+	jnz notasymbol
+	xor bx,bx
+	mov di, [di+NUMREGNAMES*2 - 2]
+getsymlow:
+	mov dx,[di]
+	inc si		;skip over second char
+	clc
+	pop cx
+	pop di
+	pop ax
+	ret
+maybenotasymbol:
+	cmp al,'E'		;386 standard register names start with E
+	jnz notasymbol
+	mov al,[si+1]
+	xchg al,ah
+	and ax,TOUPPER_W
+	cmp ax,"PI"
+	jnz @F
+	mov di,offset regs.rIP
+	jmp iseip
+@@:
+	mov cx,8	;scan for the 8 standard register names only
+	repnz scasw
+	jnz notasymbol
+	mov di,[di+NUMREGNAMES*2 - 2]
+iseip:
+	mov bx,[di+2]	;get HiWord of DWORD register
+	inc si
+	jmp getsymlow
+notasymbol:
+	pop cx
+	pop di
+	pop ax
+	stc
+	ret
+issymbol endp
+
+;   GETDWORD - Get (hex) dword from input line.
+;       Entry   AL  first character
+;           SI  address of next character
+;       Exit    BX:DX   dword
+;           AL  first character not in the word
+;           SI  address of the next character after that
+;       Uses    AH,CL
+
+getdword proc
+	call issymbol
+	jc @F
+	lodsb
+	ret
+@@:
+	call getnyb
+	jc errorj6		;if error
+	cbw
+	xchg ax,dx
+	xor bx,bx		;clear high order word
+gd1:
+	lodsb
+	call getnyb
+	jc gd3
+	test bh,0f0h
+	jnz errorj6		;if too big
+	mov cx,4
+gd2:
+	shl dx,1		;double shift left
+	rcl bx,1
+	loop gd2
+	or dl,al
+	jmp gd1
+gd3:
+	ret
+getdword endp
+
+errorj6:
+	jmp cmd_error
+
+;   GETWORD - Get (hex) word from input line.
+;       Entry   AL  first character
+;           SI  address of next character
+;       Exit    DX  word
+;           AL  first character not in the word
+;           SI  address of the next character after that
+;       Uses    AH,CL
+
+getword proc
+	push bx
+	call getdword
+	and bx,bx		;hiword clear?
+	pop bx
+	jnz errorj6		;if error
+	ret
+getword endp
+
+;   GETBYTE - Get (hex) byte from input line into DL.
+;       Entry   AL  first character
+;           SI  address of next character
+;       Exit    DL  byte
+;           AL  first character not in the word
+;           SI  address of the next character after that
+;       Uses    AH,CL
 
 getbyte:
 	call getword
-    and dh,dh
-	jz  gb_0
-	jmp errorj2		;if error
-gb_0:
+	and dh,dh
+	jnz errorj6		;if error
 	ret
 
-;	GETNYB - Convert the hex character in AL into a nybble.  Return
-;	carry set in case of error.
+;--- GETNYB - Convert the hex character in AL into a nybble.  Return
+;--- carry set in case of error.
 
-getnyb:	
-	push	ax
-	sub	al,'0'
-	cmp	al,9
-	jbe	gn1		;if normal digit
-	pop	ax
+getnyb:
 	push ax
-	or	al,TOLOWER
-	sub	al,'a'
-	cmp	al,'f'-'a'
-	ja	gn2		;if not a-f or A-F
-	add	al,10
+	sub al,'0'
+	cmp al,9
+	jbe gn1		;if normal digit
+	pop ax
+	push ax
+	or al,TOLOWER
+	sub al,'a'
+	cmp al,'f'-'a'
+	ja gn2		;if not a-f or A-F
+	add al,10
 gn1:
-	inc	sp		;normal return (first pop old AX)
-	inc	sp
+	inc sp		;normal return (first pop old AX)
+	inc sp
 	clc
 	ret
 gn2:
-	pop	ax		;error return
+	pop ax		;error return
 	stc
 	ret
 
-;	CHKEOL1 - Check for end of line.
+;--- CHKEOL1 - Check for end of line.
 
-chkeol:	call	skipwh0
-	cmp	al,CR
-	jne	errorj8		;if not found
+chkeol:
+	call skipwh0
+	cmp al,CR
+	jne errorj8		;if not found
 	ret
 
-errorj8:jmp	error
+errorj8:
+	jmp cmd_error
 
-;	SKIPCOMMA - Skip white space, then an optional comma, and more white
-;		space.
-;	SKIPCOMM0 - Same as above, but we already have the character in AL.
+;   SKIPCOMMA - Skip white space, then an optional comma, and more white
+;       space.
+;   SKIPCOMM0 - Same as above, but we already have the character in AL.
 
 skipcomma:
 	lodsb
 skipcomm0:
-	call	skipwh0
-	cmp	al,','
-	jne	sc2		;if no comma
-	push	si
+	call skipwh0
+	cmp al,','
+	jne sc2		;if no comma
+	push si
 	call skipwhite
-	cmp	al,CR
-	jne	sc1		;if not end of line
-	pop	si
-	mov	al,','
+	cmp al,CR
+	jne sc1		;if not end of line
+	pop si
+	mov al,','
+	ret
+sc1:
+	add sp,2	;pop si into nowhere
+sc2:
 	ret
 
-sc1:	add	sp,2		;pop si into nowhere
-sc2:	ret
-
-;	SKIPALPHA - Skip alphabetic character, and then white space.
+;--- SKIPALPHA - Skip alphabetic character, and then white space.
 
 skipalpha:
 	lodsb
-	and	al,TOUPPER
-	sub	al,'A'
-	cmp	al,'Z'-'A'
-	jbe	skipalpha
-	dec	si
-;	jmp	skipwhite	;(control falls through)
+	and al,TOUPPER
+	sub al,'A'
+	cmp al,'Z'-'A'
+	jbe skipalpha
+	dec si
+;	jmp skipwhite	;(control falls through)
 
-;	SKIPWHITE - Skip spaces and tabs.
-;	SKIPWH0 - Same as above, but we already have the character in AL.
+;--- SKIPWHITE - Skip spaces and tabs.
+;--- SKIPWH0 - Same as above, but we already have the character in AL.
 
 skipwhite:
 	lodsb
-skipwh0:cmp	al,' '
-	je	skipwhite
-	cmp	al,TAB
-	je	skipwhite
+skipwh0:
+	cmp al,' '
+	je skipwhite
+	cmp al,TAB
+	je skipwhite
 	ret
 
-;	IFSEP	Compare AL with separators ' ', '\t', ',', ';', '='.
+;--- IFSEP Compare AL with separators ' ', '\t', ',', ';', '='.
 
-ifsep:	cmp	al,' '
-	je	ifs1
-	cmp	al,TAB
-	je	ifs1
-	cmp	al,','
-	je	ifs1
-	cmp	al,';'
-	je	ifs1
-	cmp	al,'='
-ifs1:	ret
-
-;	Here is the start of the disassembly part of the program.
-
-;	Jump table for OP_IMM, OP_RM, OP_M, OP_R_MOD, OP_MOFFS, OP_R, OP_R_ADD,
-;	and OP_AX.
-
-disjmp2	dw	dop01,dop04,dop29,dop29a,dop30,dop32,dop36,dop37
-
-optab	dw	dop38,dop38a,dop38b,dop39,dop42,dop41	;jump table
-	dw	dop43,dop46,dop47,dop49,dop51,dop52
-	dw	dop53,dop54,dop56,dop58,dop59,dop59e,dop60
-	db	'1',0,'3',0,'DXCLSTCSDSESFSGSSS'	;simple strings
-
-OP_STR	equ	OP_1		;first string entry
-
-;	DISASM - Disassemble.
-
-dis_n	dw	0		;number of bytes in instruction so far
-		dw  0
-preflags db	0		;flags for prefixes found so far
-preused	db	0		;flags for prefixes used so far
-
-PRESEG	equ	1		;segment prefix
-PREREP	equ	2		;rep prefixes
-PREREPZ	equ	4		;f3, not f2
-PRELOCK	equ	8		;lock prefix
-PRE32D	equ	10h		;flag for 32-bit data
-PRE32A	equ	20h		;flag for 32-bit addressing
-PREWAIT	equ	40h		;prefix wait (not really a prefix)
-GOTREGM	equ	80h		;set if we have the reg/mem part
-
-instru	db	0		;the main instruction byte
-index	dw	0		;index of the instruction (unsqueezed)
-	dw	SFPGROUP3, SFPGROUP3+1, SFPGROUP3+4
-	dw	SPARSE_BASE+24h, SPARSE_BASE+26h ;obsolete-instruction values
-rmsize	db	0		;<0 or 0 or >0 means mod r/m is 8 or 16 or 32
-segmnt	db	0		;segment determined by prefix (or otherwise)
-addrr	dw	0		;address in mod r/m byte
-savesp2	dw	0		;save the stack pointer here (used in disasm)
-
-disflags db	0		;flags for the disassembler
-
-				;equates for disflags:
-DIS_F_REPT	equ	1	;repeat after pop ss, etc.
-DIS_F_SHOW	equ	2	;show memory contents
-DIS_I_SHOW	equ	4	;there are memory contents to show
-DIS_I_UNUSED	equ	8	;(internal) print " (unused)"
-DIS_I_SHOWSIZ	equ	10h	;(internal) always show the operand size
-DIS_I_KNOWSIZ	equ	20h	;(internal) we know the operand size of instr.
-
-disflags2 db	0		;another copy of DIS_I_KNOWSIZ
-
-sizeloc	dw	0		;address of size words in output line
-
-;	Jump table for a certain place.
-
-disjmp	dw	disbad		;illegal instruction
-	dw	da6		;two byte instruction
-	dw	da7		;instruction group
-	dw	da8		;coprocessor instruction
-	dw	da9		;coprocessor instruction group
-	dw	da10		;instruction prefix
-
-;	Table for 16-bit mod r/m addressing.  8 = BX, 4 = BP, 2 = SI, 1 = DI.
-
-rmtab	db	8+2, 8+1, 4+2, 4+1, 2, 1, 4, 8
-
-;	Tables of register names.
-;	rgnam816/rgnam16/segrgnam/xregnam must be consecutive.
-
-rgnam816 dw	'AL','CL','DL','BL','AH','CH','DH','BH'
-rgnam16	dw	'AX','CX','DX','BX','SP','BP','SI','DI'
-segrgnam dw	'ES','CS','SS','DS','FS','GS'
-xregnam	dw	'ST','MM','CR','DR','TR'
-sizetcnam dw	'BY','WO','WO','DW','QW','FL','DO','TB','SH','LO','NE','FA'
-segrgaddr dw	reg_es,reg_cs,reg_ss,reg_ds
-
-;	Tables for handling of named prefixes.
-
-prefixlist	db	26h,2eh,36h,3eh,64h,65h	;segment prefixes (in order)
-		db	9bh,0f0h,0f2h,0f3h	;WAIT,LOCK,REPNE,REPE
-prefixmnem	dw	MNEM_WAIT,MNEM_LOCK,MNEM_REPNE,MNEM_REPE
-
-disasm:
-	mov	[savesp2],sp
-    xor ax,ax
-	mov	word [dis_n],ax
-	mov	word [preflags],ax	;clear preflags and preused
-%if PM    
-    mov [bCSAttr],al
-    cmp byte [machine],3
-    jb  disasm_1
-    call ispm
-    jnz disasm_1
-    mov ax,[u_addr+4]
-    call getattrhigh
-    mov [bCSAttr],ah
-    jz disasm_1
-    or byte [preflags], PRE32D | PRE32A
-    or byte [preused], PRE32D | PRE32A
-disasm_1:
-%endif
-	mov	byte [segmnt],3		;initially use DS segment
-	mov	byte [rmsize],80h	;don't display any memory
-	mov	word [dismach],0	;no special machine needed, so far
-	call	disgetbyte	;get a byte of the instruction
-	cmp	al,9bh		;wait instruction (must be the first prefix)
-	jne	da2		;if not
-
-;	The wait instruction is actually a separate instruction as far as
-;	the x86 is concerned, but we treat it as a prefix since there are
-;	some mnemonics that incorporate it.  But it has to be treated specially
-;	since you can't do, e.g., seg cs wait ... but must do wait seg cs ...
-;	instead.  We'll catch it later if the wait instruction is not going to
-;	be part of a shared mnemonic.
-
-	or	byte [preflags],PREWAIT
-
-;	If we've found a prefix, we return here for the actual instruction
-;	(or another prefix).
-
-da1:	call	disgetbyte
-da2:	mov	[instru],al	;save away the instruction
-	mov	ah,0
-
-;	Now we have the sequence number of the instruction in AX.  Look it up.
-
-da3:	mov	bx,ax
-	mov	[index],ax	;save the compressed index
-	cmp	ax,SPARSE_BASE
-	jb	da4		;if it's not from the squeezed part of the table
-	mov	bl,[sqztab+bx-SPARSE_BASE]
-	mov	bh,0
-	add	bx,SPARSE_BASE	;bx = compressed index
-
-da4:	mov	cl,[optypes+bx]	;cx = opcode type
-	mov	ch,0
-	shl	bx,1
-	mov	bx,[opinfo+bx]	;bx = other info (usually the mnemonic)
-	mov	si,cx
-	mov	ax,bx
-	mov	cl,12
-	shr	ax,cl
-	cmp	al,[dismach]
-	jb	da5		;if a higher machine is already required
-	mov	[dismach],al	;set machine type
-da5:	and	bx,0fffh	;remove the machine field
-	cmp	si,OPTYPES_BASE
-	jae	da13		;if this is an actual instruction
-	call	[disjmp+si]	;otherwise, do more specific processing
-	jmp	da3		;back for more
-
-;	Two-byte instruction.
-
-da6:	call	disgetbyte
-	mov	[instru],al
-	mov	ah,0
-	add	ax,SPARSE_BASE
+ifsep:
+	cmp al,' '
+	je @F
+	cmp al,TAB
+	je @F
+	cmp al,','
+	je @F
+	cmp al,';'
+	je @F
+	cmp al,'='
+@@:
 	ret
 
-;	Instruction group.
+;   Here is the start of the disassembly part of the program.
 
-da7:	call	getregmem_r	;get the middle 3 bits of the R/M byte
+OP_STR equ OP_1		;first string entry
+
+dis_n	dw 0		;number of bytes in instruction so far
+		dw 0		;must follow dis_n (will always remain 0)
+;--- preflags and preused must be consecutive
+preflags db 0		;flags for prefixes found so far
+preused	db 0		;flags for prefixes used so far
+
+PRESEG	equ 1		;segment prefix
+PREREP	equ 2		;rep prefixes
+PREREPZ	equ 4		;f3, not f2
+PRELOCK	equ 8		;lock prefix
+PRE32D	equ 10h		;flag for 32-bit data
+PRE32A	equ 20h		;flag for 32-bit addressing
+PREWAIT	equ 40h		;prefix wait (not really a prefix)
+GOTREGM	equ 80h		;set if we have the reg/mem part
+
+instru	db 0		;the main instruction byte
+index	dw 0		;index of the instruction (unsqueezed)
+		dw SFPGROUP3, SFPGROUP3+1, SFPGROUP3+4
+		dw SPARSE_BASE+24h, SPARSE_BASE+26h ;obsolete-instruction values
+rmsize	db 0		;<0 or 0 or >0 means mod r/m is 8 or 16 or 32
+segmnt	db 0		;segment determined by prefix (or otherwise)
+addrr	dw 0		;address in mod r/m byte (16bit only)
+savesp2	dw 0		;save the stack pointer here (used in disasm)
+
+disflags db 0		;flags for the disassembler
+
+;--- equates for disflags:
+
+DIS_F_REPT		equ 1	;repeat after pop ss, etc.
+DIS_F_SHOW		equ 2	;show memory contents
+DIS_I_SHOW		equ 4	;there are memory contents to show
+DIS_I_UNUSED	equ 8	;(internal) print " (unused)"
+DIS_I_SHOWSIZ	equ 10h	;(internal) always show the operand size
+DIS_I_KNOWSIZ	equ 20h	;(internal) we know the operand size of instr.
+
+disflags2 db 0		;another copy of DIS_I_KNOWSIZ
+
+sizeloc dw 0		;address of size words in output line
+
+;--- Table for 16-bit mod r/m addressing.  8 = BX, 4 = BP, 2 = SI, 1 = DI.
+
+rmtab	db 8+2, 8+1, 4+2, 4+1, 2, 1, 4, 8
+
+;   Tables of register names.
+;   rgnam816/rgnam16/segrgnam/xregnam must be consecutive.
+
+rgnam816	db 'AL','CL','DL','BL','AH','CH','DH','BH'	;0-7
+rgnam16		db 'AX','CX','DX','BX','SP','BP','SI','DI'	;8-15,16-23
+segrgnam	db 'ES','CS','SS','DS','FS','GS'			;24-29
+xregnam		db 'ST','MM','CR','DR','TR'					;30-34
+N_ALLREGS equ $ - rgnam816
+
+REG_ST	equ 30
+REG_MM	equ 31
+REG_CR	equ 32
+REG_DR	equ 33
+REG_TR	equ 34
+
+segrgaddr	dw regs.rES,regs.rCS,regs.rSS,regs.rDS
+
+;--- Tables for handling of named prefixes.
+
+prefixlist	db 26h,2eh,36h,3eh,64h,65h	;segment prefixes (in order)
+			db 9bh,0f0h,0f2h,0f3h		;WAIT,LOCK,REPNE,REPE
+N_PREFIX equ $ - prefixlist
+prefixmnem	dw MN_WAIT,MN_LOCK,MN_REPNE,MN_REPE
+
+disasm1:				;<--- standard entry
+	mov [disflags],0
+
+disasm proc				;<--- entry with disflags set
+	mov [savesp2],sp
+	xor ax,ax
+	mov [dis_n],ax
+	mov word ptr [preflags],ax	;clear preflags and preused
+if PM
+	mov bx,[u_addr+4]
+	call getselattr
+	mov [bCSAttr],al
+	jz @F
+	or [preflags], PRE32D or PRE32A
+;	or [preused], PRE32D or PRE32A
+@@:
+endif
+	mov [segmnt],3			;initially use DS segment
+	mov [rmsize],80h		;don't display any memory
+	mov word ptr [dismach],0;no special machine needed, so far
+	call disgetbyte			;get a byte of the instruction
+	cmp al,9bh				;wait instruction (must be the first prefix)
+	jne da2					;if not
+
+;   The wait instruction is actually a separate instruction as far as
+;   the x86 is concerned, but we treat it as a prefix since there are
+;   some mnemonics that incorporate it.  But it has to be treated specially
+;   since you can't do, e.g., seg cs wait ... but must do wait seg cs ...
+;   instead.  We'll catch it later if the wait instruction is not going to
+;   be part of a shared mnemonic.
+
+	or [preflags],PREWAIT
+
+;   If we've found a prefix, we return here for the actual instruction
+;   (or another prefix).
+
+da1:
+	call disgetbyte
+da2:
+	mov [instru],al	;save away the instruction
+	mov ah,0
+
+;--- Now we have the sequence number of the instruction in AX.  Look it up.
+
+da3:
+	mov bx,ax
+	mov [index],ax	;save the compressed index
+	cmp ax,SPARSE_BASE
+	jb @F			;if it's not from the squeezed part of the table
+	mov bl,[sqztab+bx-SPARSE_BASE]
+	mov bh,0
+	add bx,SPARSE_BASE	;bx = compressed index
+@@:
+	mov cl,[optypes+bx]	;cx = opcode type
+	mov ch,0
+	shl bx,1
+	mov bx,[opinfo+bx]	;bx = other info (usually the mnemonic)
+	mov si,cx
+	mov ax,bx
+	mov cl,12
+	shr ax,cl
+	cmp al,[dismach]
+	jb @F				;if a higher machine is already required
+	mov [dismach],al	;set machine type
+@@:
+	and bh,0fh			;=and bx,0fffh - remove the machine field
+	cmp si,OPTYPES_BASE
+	jae da13			;if this is an actual instruction
+	call word ptr [disjmp+si]	;otherwise, do more specific processing
+	jmp da3				;back for more
+
+;   Jump table for OP_IMM, OP_RM, OP_M, OP_R_MOD, OP_MOFFS, OP_R, OP_R_ADD,
+;   and OP_AX.
+
+disjmp2 dw dop_imm,dop_rm,dop_m,dop_r_mod,dop_moffs,dop_r,dop_r_add,dop_ax
+
+;   jump table for displaying operands
+;   must be in the order of OP_M64 .. OP_SHOSIZ
+
+optab label word
+	dw dop_m64,dop_mfloat,dop_mdouble,dop_m80,dop_mxx,dop_farmem	;0-5
+	dw dop_farimm,dop_rel8,dop_rel1632,dop49,dop_sti,dop_cr			;6-11
+	dw dop_dr,dop_tr,dop_segreg,dop_imms8,dop_imm8,dop_mmx,dop_shosiz;12-18
+    
+	db '1',0,'3',0,'DXCLSTCSDSESFSGSSS'	;simple strings
+
+;--- Jump table for a certain place.
+;--- the size of this table matches OPTYPES_BASE
+
+disjmp label word
+	dw disbad		;illegal instruction
+	dw da_twobyte	;two byte instruction
+	dw da_insgrp	;instruction group
+	dw da_fpuins	;coprocessor instruction
+	dw da_fpugrp	;coprocessor instruction group
+	dw da_insprf	;instruction prefix (including 66h/67h)
+
+;--- Two-byte instruction.
+
+da_twobyte:
+	call disgetbyte
+	mov [instru],al
+	mov ah,0
+	add ax,SPARSE_BASE
+	ret
+
+;--- Instruction group.
+
+da_insgrp:
+	call getregmem_r	;get the middle 3 bits of the R/M byte
 	cbw
-	add	ax,bx		;offset
+	add ax,bx			;offset
 	ret
 
-;	Coprocessor instruction.
+;--- Coprocessor instruction.
 
-da8:	or	byte [disflags],DIS_I_SHOWSIZ
-	or	byte [dmflags],DM_COPR
-	call	getregmem
-	cmp	al,0c0h
-	jb	da7		;range 00-bfh is same as an instruction group
-	mov	cl,3
-	shr	al,cl		;C0h --> 18h
-	sub	al,18h-8	;18h --> 8
+da_fpuins:
+	or [disflags], DIS_I_SHOWSIZ
+	or [dmflags], DM_COPR
+	call getregmem
+	cmp al,0c0h
+	jb da_insgrp	;range 00-bfh is same as an instruction group
+	mov cl,3
+	shr al,cl		;C0h --> 18h
+	sub al,18h-8	;18h --> 8
 	cbw
-	add	ax,bx		;offset
+	add ax,bx		;offset
 	ret
 
-;	Coprocessor instruction group.
+;--- Coprocessor instruction group.
 
-da9:	mov	al,[regmem]
-	and	al,7
+da_fpugrp:
+	mov al,[regmem]
+	and al,7
 	cbw
-	add	ax,bx
+	add ax,bx
 	ret
 
-;	Instruction prefix.  At this point, bl = prefix bits; bh = segment
+;--- Instruction prefix.  At this point, bl = prefix bits; bh = segment
 
-da10:	
-%if 1
+da_insprf:
+if 1
 	mov al,bl
-    and bl,~(PRE32D | PRE32A)
-%endif
-	test	bl,[preflags]
-	jnz	da12		;if there are duplicates
-%if 1
-    or [preflags],bl
-    mov bl,al
-    and al,PRE32D | PRE32A
-    xor [preflags],al
-%else
-	or	[preflags],bl
-%endif    
-	test	bl,PRESEG
-	jz	da11		;if not a segment
-	mov	[segmnt],bh	;save the segment
-da11:
-	pop	ax		;discard return address
-	jmp	da1
+	and bl,not (PRE32D or PRE32A)	;these flags are XORed!
+endif
+	test bl,[preflags]
+	jnz da12		;if there are duplicates
+	or [preflags],bl
+if 1
+	mov bl,al
+	and al,PRE32D or PRE32A
+	xor [preflags],al
+endif
+	test bl,PRESEG
+	jz @F			;if not a segment
+	mov [segmnt],bh	;save the segment
+@@:
+	pop ax			;discard return address
+	jmp da1
 
-da12:	jmp	disbad		;we don't allow duplicate prefixes
+da12:
+	jmp disbad		;we don't allow duplicate prefixes
 
-;	OK.  Here we go.  This is an actual instruction.
-;	First print the op mnemonic.
+;   OK.  Here we go.  This is an actual instruction.
+;   BX=offset of mnemonic in mnlist
+;   SI=offset of operand list in oplists
+;   First print the op mnemonic.
 
-da13:	push	si
-	lea	si,[mnlist+bx]	;offset of mnemonic
-	cmp	si,mnlist+MNEM_BSWAP
-	jne	da13a		;if not BSWAP
-	call	dischk32d
-	jz	da12		;if no operand-size prefix
-da13a:	call	showop		;print out the op code (at line_out+24)
-	mov	word [sizeloc],0 ;clear out this flag
-	pop	si		;recover list of operands
-	add	si,oplists-OPTYPES_BASE
-	cmp	byte [si],0
-	je	da21		;if we're done
+da13:
+	push si
+	lea si,[mnlist+bx]	;offset of mnemonic
+	cmp si,offset mnlist+MN_BSWAP
+	jne @F				;if not BSWAP
+	call dischk32d
+	jz da12				;if no operand-size prefix
+@@:
+	call showop			;print out the op code (at line_out+28)
+	mov [sizeloc],0		;clear out this flag
+	pop si				;recover list of operands
+	add si,offset oplists - OPTYPES_BASE
+	cmp byte ptr [si],0
+	je da21				;if we're done
 
-;	Loop over operands.  [si] = pointer to next operand type.
-;	Fortunately the operands appear in the instruction in the same
-;	order as they appear in the disassembly output.
+;   Loop over operands.  si -> operand type.
+;   Fortunately the operands appear in the instruction in the same
+;   order as they appear in the disassembly output.
 
-da14:	mov	byte [disflags2],0	;clear out size-related flags
-	lodsb			;get the operand type
-	cmp	al,OP_SIZE
-	jb	da18		;if it's not size dependent
-	mov	byte [disflags2],DIS_I_KNOWSIZ	;indicate variable size
-	cmp	al,OP_8
-	jae	da16		;if the size is fixed
-	cmp	al,OP_1632
-	jae	da15		;if word or dword
-	mov	ah,-1
-	test	byte [instru],1
-	jz	da17		;if byte
+da14:
+	mov [disflags2],0		;clear out size-related flags
+	lodsb					;get the operand type
+	cmp al,OP_SIZE
+	jb da18					;if it's not size dependent
+	mov [disflags2],DIS_I_KNOWSIZ	;indicate variable size
+	cmp al,OP_8
+	jae da16				;if the size is fixed (8,16,32,64)
+	cmp al,OP_1632
+	jae da15				;if word or dword
+	mov ah,-1
+	test [instru],1
+	jz da17					;if byte
 da15:
-	or	byte [preused],PRE32D	;mark this flag as used
-	mov	ah,[preflags]
-	and	ah,PRE32D	;this will be >0 for dword, =0 for word
-	jmp	da17		;done
+	or [preused],PRE32D		;mark this flag as used
+	mov ah,[preflags]
+	and ah,PRE32D			;this will be 10h for dword, 00h for word
+	jmp da17				;done
 
-da16:	mov	ah,al		;OP_8 or OP_16 or OP_32 (we know which)
-	and	ah,0f0h		;this converts ah to <0 for byte, =0 for word,
-	sub	ah,OP_16	;and >0 for dword
+da16:
+	mov ah,al		;OP_8, OP_16, OP_32 or OP_64 (we know which)
+	and ah,0f0h		;this converts ah to <0 for byte, =0 for word,
+	sub ah,OP_16	;and >0 for dword (byte=F0,word=0,dword=10,qword=20)
 
-;	Now we know the size (in ah); branch off to do the operand itself.
+;--- Now we know the size (in ah); branch off to do the operand itself.
 
-da17:	mov	bl,al
-	and	bx,0fh
-	call	[disjmp2+bx]	;print out the operand
-	jmp	da20		;done with operand
+da17:
+	mov bl,al
+	and bx,0eh			;8 entries (IMM, RM, M, R_MOD, M_OFFS, R, R_ADD, AX)
+	call [disjmp2+bx]	;print out the operand
+	jmp da20			;done with operand
 
-;	Sizeless operands.
+;--- Sizeless operands.
 
-da18:	cbw
-	xchg	ax,bx
-	cmp	bl,OP_STR
-	jb	da19		;if it's not a string
-	mov	ax,[optab+bx-2]
+da18:
+	cbw
+	xchg ax,bx
+	cmp bl,OP_STR
+	jb @F				;if it's not a string
+	mov ax,[optab+bx-2]
 	stosw
-	cmp	ah,0
-	jnz	da20		;if it's two characters
-	dec	di
-	jmp	da20		;done with operand
+	cmp ah,0
+	jnz da20			;if it's two characters
+	dec di
+	jmp da20			;done with operand
+@@:
+	call [optab+bx-2]	;otherwise, do something else
 
-da19:	call	[optab+bx-2]	;otherwise, do something else
+;--- operand done, check if there's another one
 
-da20:	cmp	byte [si],0
-	jz	da21		;if we're done
-	mov	al,','
+da20:
+	cmp byte ptr [si],0
+	jz da21				;if we're done
+	mov al,','
 	stosb
-	jmp	da14		;another operand
+	jmp da14			;another operand
 
-da21:	
-	mov	al,[preused]
-	not	al
-	and	al,[preflags]
-	jnz	da22		;if some flags remain unused
-	jmp	da28		;if all flags were used
-da22:	mov	cx,N_WTAB
-	mov	bx,wtab1
-	mov	dx,2*N_WTAB-2
-	mov	ah,PREWAIT
-	test	al,ah
-	jnz	da23		;if there's a WAIT prefix hanging
+;--- all operands done.
+;--- now check and loop for unused prefixes:
+;--- OPSIZE (66h), ADDRSIZE (67h), WAIT, segment, REP[N][Z], LOCK
 
-	mov	cx,N_LTAB
-	mov	bx,ltab1
-	mov	dx,2*N_LTAB-2
-	mov	ah,PRE32D
-	test	al,ah
-	jnz da23		;if it's not a 32-bit prefix that's hanging
+da21:
+	mov al,[preused]
+	not al
+	and al,[preflags]
+	jnz @F			;if some flags remain unused
+	jmp da28		;if all flags were used
+@@:
+	mov cx,N_WTAB
+	mov bx,offset wtab1
+	mov dx,2*N_WTAB-2
+	mov ah,PREWAIT
+	test al,ah
+	jnz @F			;if there's a WAIT prefix hanging
 
-	mov	cx,N_LTABX
-	mov	bx,ltab1X
-	mov	dx,2*N_LTABX-2
-	mov	ah,PRE32A
-	test	al,ah
-	jnz da23		;if it's not a 32-bit prefix that's hanging
+	mov cx,N_LTABO
+	mov bx,offset ltabo1
+	mov dx,2*N_LTABO-2
+	mov ah,PRE32D
+	test al,ah
+	jnz @F			;if it's not a 66h prefix that's hanging
 
-	jmp	da24
+	mov cx,N_LTABA
+	mov bx,offset ltaba1
+	mov dx,2*N_LTABA-2
+	mov ah,PRE32A
+	test al,ah
+	jnz @F			;if it's not a 67h prefix that's hanging
+	jmp da24
+@@:
+	or [preused],ah	;mark this prefix as used
+	push di
+	mov di,bx
+	mov bl,ah
+	mov ax,[index]
+	repne scasw
+	jne da23_1		;if not found in the list
+	add di,dx		;replace the mnemonic with the 32-bit name
+	mov si,[di]
+	add si,offset mnlist
+	call showop		;copy op mnemonic
+da23_0:
+	pop di
+	jmp da21
+da23_1:
+if PM
+	test bl,PRE32A or PRE32D	;is a 66/67 prefix unhandled?
+	jz disbad2
+	test [bCSAttr],40h		;32bit code segment?
+	jnz da23_0				;then ignore those. 
+endif
+disbad2:
+	jmp disbad
 
-da23:
-	or	[preused],ah	;mark this prefix as used
-	push	di
-	mov	di,bx
-	mov	ax,[index]
-	repne	scasw
-	jne	disbad2		;if not found in the list
-	add	di,dx		;replace the mnemonic with the 32-bit name
-	mov	si,[di]
-	add	si,mnlist
-	call	showop		;copy op mnemonic
-	pop	di
-	jmp	da21
-
-disbad2:jmp	disbad
-
-da24:	test	al,PRESEG
-	jz	da25		;if not because of a segment prefix
-	mov	ax,[index]
-	cmp	ah,0
-	jnz	disbad2		;if index > 256
-	push	di
-	mov	cx,P_LEN
-	mov	di,prfxtab
-	repne	scasb
-	pop	di
-	jne	disbad2		;if it's not on the list
-	mov	cx,3
-	call	moveover
-	push	di
-	mov	di,line_out+24
-	call	showseg
-	mov	al,' '
+da24:
+	test al,PRESEG
+	jz da25			;if not because of a segment prefix
+	mov ax,[index]
+	cmp ah,0
+	jnz disbad2		;if index > 256
+	push di
+	mov cx,P_LEN
+	mov di,offset prfxtab
+	repne scasb
+	pop di
+	jne disbad2		;if it's not on the list
+	mov cx,3
+	call moveover
+	push di
+	mov di,offset line_out+MNEMONOFS
+	call showseg	;show segment register
+	mov al,':'
 	stosb
-	pop	di
-	or	byte [preused],PRESEG	;mark it as used
-	jmp	da21
+	pop di
+	or [preused],PRESEG		;mark it as used
+	jmp da21
 
-da25:	test	al,PREREP
-	jz	da26		;if not a REP prefix
-	and	al,PREREP+PREREPZ
-	or	[preused],al
-	mov	ax,[index]
-	cmp	ah,0
-	jnz	disbad2		;if not in the first 256 bytes
-	and	al,0feh		;clear the low bit
-	push	di
-	mov	di,replist
-	mov	cx,5
-	repne	scasb
-	mov	si,mnlist+MNEM_REP
-	je	da27		;if one of the REP instructions
-	inc	cx
-	inc	cx
-	repne	scasb
-	jne	disbad2		;if not one of the REPE/REPNE instructions
-	mov	si,mnlist+MNEM_REPE
-	test	byte [preused],PREREPZ
-	jnz	da27		;if REPE
-	mov	si,mnlist+MNEM_REPNE
-	jmp	da27		;it's REPNE
+da25:
+	test al,PREREP
+	jz da26			;if not a REP prefix
+	and al,PREREP+PREREPZ
+	or [preused],al
+	mov ax,[index]
+	cmp ah,0
+	jnz disbad2		;if not in the first 256 bytes
+	and al,not 1	;clear bit0 (MOVSW -> MOVSB)
+	push di
+	mov di,offset replist
+	mov cx,5		;scan those for REP first
+	repne scasb
+	mov si,offset mnlist+MN_REP
+	je da27			;if one of the REP instructions
+	mov cl,2
+	repne scasb
+	jne disbad2		;if not one of the REPE/REPNE instructions
+	mov si,offset mnlist+MN_REPE
+	test [preused],PREREPZ
+	jnz da27		;if REPE
+	mov si,offset mnlist+MN_REPNE
+	jmp da27		;it's REPNE
 
-disbad3:jmp	disbad
+disbad3:
+	jmp disbad
 
-da26:	test	al,PRELOCK
-	jz	disbad3		;if not a lock prefix, either
-	push	di
-	mov	ax,[index]
-	mov	di,locktab
-	mov	cx,N_LOCK
-	repne	scasw
-	jne	disbad3		;if not in the approved list
-	test	byte [preused],PRESEG
-	jz	disbad3		;if memory was not accessed
-	mov	si,mnlist+MNEM_LOCK
-	or	byte [preused],PRELOCK
+da26:
+	test al,PRELOCK
+	jz disbad3		;if not a lock prefix, either
+	push di
+	mov ax,[index]
+	mov di,offset locktab
+	mov cx,N_LOCK
+	repne scasw
+	jne disbad3		;if not in the approved list
+	test [preused],PRESEG
+	jz disbad3		;if memory was not accessed
+	mov si,offset mnlist+MN_LOCK
+	or [preused],PRELOCK
 
-;	Slip in another mnemonic.  SI = offset of mnemonic, what should be
-;	DI is on the stack.
+;--- Slip in another mnemonic: REP/REPE/REPNE/LOCK.
+;--- SI = offset of mnemonic, what should be
+;--- DI is on the stack.
 
-da27:	pop	di
-	mov	cx,8
-	push	si
-	call	moveover
-	pop	si
-	push	di
-	call	showop
-	pop	di
-	jmp	da21
+da27:
+	pop di
+	mov cx,8
+	push si
+	call moveover
+	pop si
+	push di
+	call showop
+	pop di
+	jmp da21
 
-;	Done with instruction.  Erase the size indicator, if appropriate.
+;--- Done with instruction.  Erase the size indicator, if appropriate.
 
-da28:	mov	cx,[sizeloc]
-	cmp	cx,0
-	jz	da28b		;if there was no size given
-	mov	al,[disflags]
-	test	al,DIS_I_SHOWSIZ
-	jnz	da28b		;if we need to show the size
-	test	al,DIS_I_KNOWSIZ
-	jz	da28b		;if the size is not known already
-	xchg	cx,di
-	mov	si,di		;save old di
-	mov	al,' '
-da28a:	scasb			;skip size name
-	jne	da28a		;if not done yet
-				;(The above is the same as repne scasb, but
-				;has no effect on cx.)
-	add	di,4		;skip 'PTR '
-	xchg	si,di
-	sub	cx,si
-	rep	movsb		;move the line
+da28:
+	mov cx,[sizeloc]
+	cmp cx,0
+	jz da28b		;if there was no size given
+	mov al,[disflags]
+	test al,DIS_I_SHOWSIZ
+	jnz da28b		;if we need to show the size
+	test al,DIS_I_KNOWSIZ
+	jz da28b		;if the size is not known already
+	xchg cx,di
+	mov si,di		;save old di
+	mov al,' '
+@@:
+	scasb			;skip size name
+	jne @B			;if not done yet
+					;(The above is the same as repne scasb, but
+					;has no effect on cx.)
+	add di,4		;skip 'PTR '
+	xchg si,di
+	sub cx,si
+	rep movsb		;move the line
 
-;	Now we're really done.  Print out the bytes on the left.
+;--- Now we're really done.  Print out the bytes on the left.
 
-da28b:	push	di		;print start of disassembly line
-	mov	di,line_out
-	mov	ax,[u_addr+4]	;print address
+da28b:
+	push di		;print start of disassembly line
+	mov di,offset line_out
+	mov ax,[u_addr+4]	;print address
 	call hexword
-	mov	al,':'
+	mov al,':'
 	stosb
-%if PM    
-    test byte [bCSAttr],40h
-    jz isnot32bit
-	mov	ax,[u_addr+2]
+if PM
+	test [bCSAttr],40h
+	jz @F
+	mov ax,[u_addr+2]
 	call hexword
-isnot32bit:    
-%endif    
-	mov	ax,[u_addr]
+@@:
+endif
+	mov ax,[u_addr+0]
 	call hexword
-	mov	al,' '
+	mov al,' '
 	stosb
-	mov	bx,[dis_n]
-	cmp	bx,6
-	jle	da29		;if it's a short instruction
-	mov	bx,6
-	call	disshowbytes
-	call	puts
-	mov	di,line_out
-	mov	bx,[dis_n]
-	sub	bx,6
+	mov bx,[dis_n]
+@@:
+	mov si,offset line_out+MNEMONOFS - 1
+	sub si, di
+	shr si, 1
+	cmp bx,si
+	jle da29		;if it's a short instruction which fits in one line
+	sub bx,si
+	push bx
+	mov bx,si
+	push di
 	call disshowbytes
 	call putsline
-	mov	di,line_out
-	jmp	da30		;done
+	pop cx
+	pop bx
+	mov di,offset line_out
+	sub cx,di
+	mov al,' '
+	rep stosb
+	jmp @B
+da29:
+	call disshowbytes
+da30:
+	mov al,' '		;pad to op code
+	mov cx,offset line_out+MNEMONOFS
+	sub cx,di
+	jc @F
+	rep stosb
+@@:
+	pop di
+	test [disflags], DIS_I_UNUSED
+	jz da32			;if we don't print ` (unused)'
+	mov si,offset unused
+	cmp byte ptr [di-1],' '
+	jne da31		;if there's already a space here
+	inc si
+da31:
+	call showstring
 
-da29:	call	disshowbytes
-da30:	mov	ax,'  '		;pad to op code
-	mov	cx,line_out+28
-	sub	cx,di
-    jc  da30_1
-	shr	cx,1
-	rep	stosw
-da30_1:    
-	pop	di
-	test	byte [disflags],DIS_I_UNUSED
-	jz	da32		;if we don't print ` (unused)'
-	mov	si,unused
-	cmp	byte [di-1],' '
-	jne	da31		;if there's already a space here
-	inc	si
-da31:	call	showstring
+;--- Print info. on minimal processor needed.
 
-;	Print info. on minimal processor needed.
+da32:
+	push di
+	mov di,offset index+2
+	call showmach	;show the machine type, if needed
+	pop di
+	jcxz da32f		;if no message
 
-da32:	push	di
-	mov	di,index+2
-	call	showmach	;show the machine type, if needed
-	pop	di
-	jcxz	da32f		;if no message
+;--- Print a message on the far right.
 
-;	Print a message on the far right.
+	mov ax,offset line_out+79
+	sub ax,cx
+	push cx
+	call tab_to		;tab out to the location
+	pop cx
+	rep movsb		;copy the string
+	jmp da32z		;done
 
-	mov	ax,line_out+79
-	sub	ax,cx
-	push	cx
-	call	tab_to		;tab out to the location
-	pop	cx
-	rep	movsb		;copy the string
-	jmp	da32z		;done
+;--- Dump referenced memory location.
 
-;	Dump referenced memory location.
-
-da32f:	mov	al,[disflags]
-	xor	al,DIS_F_SHOW + DIS_I_SHOW
-	test	al,DIS_F_SHOW + DIS_I_SHOW
-	jnz	da32z		;if there is no memory location to show
-	cmp	byte [segmnt],3
-	ja	da32z		;if FS or GS
-	mov	ax,line_out+79-10
-	cmp	byte [rmsize],0
-	jl	da32h		;if byte
-	jz	da32g		;if word
-	sub	ax,4
-da32g:	dec	ax
-	dec	ax
-da32h:	call	tab_to
-	call	showseg		;show segment name
-	mov	al,':'
+da32f:
+	mov al,[disflags]
+	xor al,DIS_F_SHOW + DIS_I_SHOW
+	test al,DIS_F_SHOW + DIS_I_SHOW
+	jnz da32z		;if there is no memory location to show
+	cmp [segmnt],3
+	ja da32z		;if FS or GS
+	mov ax,offset line_out+79-10
+	cmp [rmsize],0
+	jl da32h		;if byte
+	jz da32g		;if word
+	sub ax,4
+da32g:
+	dec ax
+	dec ax
+da32h:
+	call tab_to
+	call showseg		;show segment register
+	mov al,':'
 	stosb
-	mov	ax,[addrr]
+	mov ax,[addrr]
 	call hexword		;show offset
-	mov	al,'='
+	mov al,'='
 	stosb
-	mov	al,[segmnt]	;segment number
+	mov al,[segmnt]		;segment number
 	cbw
-	shl	ax,1
-	xchg	ax,bx		;mov bx,ax
-	mov	bx,[segrgaddr+bx] ;get address of value
-    push es
-	mov	es,[bx]
-	mov	bx,[addrr]
-    mov al,[es:bx+0]	;avoid a "mov ax,[-1]"
-    mov ah,[es:bx+1]
-	mov	dl,[es:bx+2]	;avoid a "mov dx,[-1]"
-	mov	dh,[es:bx+3]
-	pop	es
-	cmp	byte [rmsize],0
-	jl	da32j		;if byte
-	jz	da32i		;if word
-	xchg	ax,dx
+	shl ax,1
+	xchg ax,bx			;mov bx,ax
+	mov bx,[segrgaddr+bx] ;get address of value
+	push es
+	mov es,[bx]
+	mov bx,[addrr]
+	mov al,es:[bx+0]	;avoid a "mov ax,[-1]"
+	mov ah,es:[bx+1]
+	mov dl,es:[bx+2]	;avoid a "mov dx,[-1]"
+	mov dh,es:[bx+3]
+	pop es
+	cmp [rmsize],0
+	jl da32j		;if byte
+	jz da32i		;if word
+	xchg ax,dx
 	call hexword
-	xchg	ax,dx
-da32i:	call hexword
-	jmp	da32z		;done
-da32j:	call hexbyte		;display byte
+	xchg ax,dx
+da32i:
+	call hexword
+	jmp da32z		;done
+da32j:
+	call hexbyte	;display byte
 
-da32z:	call	trimputs	;done with operand list
-	mov	al,[disflags]
-	test	al,DIS_F_REPT
+da32z:
+	call trimputs	;done with operand list
+	mov al,[disflags]
+	test al,DIS_F_REPT
 	jz	da34		;if we're not allowed to repeat ourselves
-	test	al,DIS_I_UNUSED
-	jnz	da33		;if we printed ` (unused)'
-	mov	ax,[index]
-	cmp	ax,17h
-	je	da33		;if it was `pop ss'
-	cmp	ax,8eh
-	je	da33		;if it was `mov ss,--'
-	cmp	ax,0fbh
-	jne	da34		;if it was not `sti'
-da33:	mov	byte [disflags],0
-	jmp	disasm
-da34:	ret
-
-;	Here are the routines for printing out the operands themselves.
-;	Immediate data (OP_IMM)
-
-dop01:	cmp	ah,0
-	jl	dop03		;if just a byte
-	pushf
-	test	byte [disflags],DIS_I_SHOWSIZ
-	jz	dop01a		;if we don't need to show the size
-	call	showsize
-	sub	di,4		;erase "PTR "
-dop01a:	call	disgetword
-	popf
-	jz	dop02		;if just a word
-	push	ax
-	call	disgetword	;print the high order word
-	call hexword
-	pop	ax
-dop02:	call hexword
+	test al,DIS_I_UNUSED
+	jnz da33		;if we printed ` (unused)'
+	mov ax,[index]
+	cmp ax,17h
+	je da33			;if it was `pop ss'
+	cmp ax,8eh
+	je da33			;if it was `mov ss,--'
+	cmp ax,0fbh
+	jne da34		;if it was not `sti'
+da33:
+	jmp disasm1
+da34:
 	ret
 
-dop03:	call	disgetbyte	;print immediate byte
+;--- Here are the routines for printing out the operands themselves.
+;--- Immediate data (OP_IMM)
+
+dop_imm:
+	cmp ah,0
+	jl dop03		;if just a byte
+	pushf
+	test [disflags], DIS_I_SHOWSIZ
+	jz @F			;if we don't need to show the size
+	call showsize
+	sub di,4		;erase "PTR "
+@@:
+	call disgetword
+	popf
+	jz @F			;if just a word
+	push ax
+	call disgetword	;print the high order word
+	call hexword
+	pop ax
+@@:
+	call hexword
+	ret
+
+dop03:
+	call disgetbyte	;print immediate byte
 	call hexbyte
 	ret
 
-;	MOD R/M (OP_RM)
+;--- MOD R/M (OP_RM)
 
-dop04:	call	getregmem
-	cmp	al,0c0h
-	jb	dop05
-	jmp	dop33		;if pure register reference
-dop05:	call	showsize	;print out size
-dop06:	or	byte [preused],PRESEG;needed even if there's no segment override
-				;because handling of LOCK prefix relies on it
-	test	byte [preflags],PRESEG
-	jz	dop07		;if no segment override
-	call	showseg		;print segment name
-	mov	al,':'
+dop_rm:
+	call getregmem
+	cmp al,0c0h
+	jb dop05
+	jmp dop33			;if pure register reference
+dop05:					;<--- used by OP_M, OP_M64, OP_M80
+	call showsize		;print out size
+dop06:					;<--- used by OP_MOFFS, OP_MXX, OP_MFLOAT, OP_MDOUBLE
+	or [preused],PRESEG	;needed even if there's no segment override
+						;because handling of LOCK prefix relies on it
+	test [preflags],PRESEG
+	jz @F				;if no segment override
+	call showseg		;print segment name
+	mov al,':'
 	stosb
-dop07:	mov	al,[regmem]
-	and	al,0c7h
-	or	byte [preused],PRE32A
-	test	byte [preflags],PRE32A
-	jz	dop08
-	jmp	dop18		;if 32-bit addressing
-dop08:	or	byte [disflags],DIS_I_SHOW	;we'd like to show this address
-	mov	word [addrr],0	;zero out the address initially
-	cmp	al,6
-	xchg	ax,bx		;mov bx,ax
-	mov	al,'['
+@@:
+	mov al,[regmem]
+	and al,0c7h
+	or [preused],PRE32A
+	test [preflags],PRE32A
+	jz @F
+	jmp dop18		;if 32-bit addressing
+@@:
+	or [disflags], DIS_I_SHOW	;we'd like to show this address
+	mov word ptr [addrr],0		;zero out the address initially
+	cmp al,6
+	xchg ax,bx		;mov bx,ax
+	mov al,'['
 	stosb
-	je	dop16		;if [xxxx]
-	and	bx,7
-	mov	bl,[rmtab+bx]
-	test	bl,8
-	jnz	dop09		;if BX
-	test	bl,4
-	jz	dop11		;if not BP
-	mov	ax,'BP'
-	mov	cx,[reg_bp]
-	test	byte [preflags],PRESEG
-	jnz	dop10		;if segment override
-	dec	byte [segmnt]	;default is now SS
-	jmp	dop10
+	je dop16		;if [xxxx]
+	and bx,7
+	mov bl,[rmtab+bx]
+	test bl,8
+	jnz dop09		;if BX
+	test bl,4
+	jz dop11		;if not BP
+	mov ax,'PB'
+	mov cx,[regs.rBP]
+	test [preflags],PRESEG
+	jnz dop10		;if segment override
+	dec [segmnt]	;default is now SS
+	jmp dop10
 
-dop09:	mov	ax,'BX'		;BX
-	mov	cx,[reg_bx]
+dop09:
+	mov ax,'XB'		;BX
+	mov cx,[regs.rBX]
 
-dop10:	mov	[addrr],cx	;print it out, etc.
+dop10:
+	mov [addrr],cx	;print it out, etc.
 	stosw
-	test	bl,2+1
-	jz	dop13		;if done
-	mov	al,'+'
+	test bl,2+1
+	jz dop13		;if done
+	mov al,'+'
 	stosb
-dop11:	mov	ax,'SI'
-	mov	cx,[reg_si]
-	test	bl,1
-	jz	dop12		;if SI
-	mov	al,'D'		;DI
-	mov	cx,[reg_di]
-
-dop12:	add	[addrr],cx	;print it out, etc.
+dop11:
+	mov ax,'IS'		;SI?
+	mov cx,[regs.rSI]
+	test bl,1
+	jz @F			;if SI
+	mov al,'D'		;DI
+	mov cx,[regs.rDI]
+@@:
+	add [addrr],cx	;print it out, etc.
 	stosw
-dop13:	test	byte [regmem],0c0h
-	jz	dop17		;if no displacement
-	test	byte [regmem],80h
-	jnz	dop15		;if word displacement
-	call	disgetbyte
+dop13:
+	test byte ptr [regmem],0c0h
+	jz dop17		;if no displacement
+	test byte ptr [regmem],80h
+	jnz dop15		;if word displacement
+	call disgetbyte
 	cbw
-	add	[addrr],ax
-	cmp	al,0
-	mov	ah,'+'
-	jge	dop14		;if >= 0
-	mov	ah,'-'
-	neg	al
-dop14:	mov	[di],ah
-	inc	di
-	call hexbyte		;print the byte displacement
-	jmp	dop17		;done
+	add [addrr],ax
+	cmp al,0
+	mov ah,'+'
+	jge @F			;if >= 0
+	mov ah,'-'
+	neg al
+@@:
+	mov [di],ah
+	inc di
+	call hexbyte	;print the byte displacement
+	jmp dop17		;done
 
-dop15:	mov	al,'+'
+dop15:
+	mov al,'+'
 	stosb
-dop16:	call	disgetword
-	add	[addrr],ax
-	call hexword
+dop16:
+	call disgetword
+	add [addrr],ax
+	call hexword    ;print word displacement
 
-dop17:	mov	al,']'
+dop17:
+	mov al,']'
 	stosb
 	ret
 
-;	32-bit MOD REG R/M addressing.
+;--- 32-bit MOD REG R/M addressing.
 
-dop18:	cmp	al,5
-	jne	dop19		;if not just a disp32 address
-	mov	al,'['
+dop18:
+	cmp al,5
+	jne @F			;if not just a disp32 address
+	mov al,'['
 	stosb
-	call	disp32
-	jmp	dop27
+	call disp32		;display 32bit offset
+	jmp dop27
 
-dop19:	push	ax
-	and	al,7
-	cmp	al,4
-	jne	dop20		;if no SIB
-	call	disgetbyte	;get and save it
-	mov	[sibbyte],al
-dop20:	pop	ax
-	test	al,80h
-	jnz	dop22		;if disp32
-	test	al,40h
-	jz	dop23		;if no disp8
-	call	disgetbyte
-	cmp	al,0
-	jge	dop21		;if >= 0
-	neg	al
-	mov	byte [di],'-'
-	inc	di
-dop21:	call hexbyte
-	jmp	dop23		;done
+@@:
+	push ax
+	and al,7
+	cmp al,4
+	jne @F			;if no SIB
+	call disgetbyte	;get and save it
+	mov [sibbyte],al
+@@:
+	pop ax
+	test al,80h
+	jnz dop22		;if disp32
+	test al,40h
+	jz dop23		;if no disp8
+	call disgetbyte
+	cmp al,0
+	jge @F			;if >= 0
+	neg al
+	mov byte ptr [di],'-'
+	inc di
+@@:
+	call hexbyte
+	jmp dop23		;done
 
-dop22:	call	disp32		;print disp32
+dop22:
+	call disp32		;print disp32
 
-dop23:	mov	al,[regmem]
-	and	al,7
-	cmp	al,4
-	jne	dop28		;if no SIB
-	mov	al,[sibbyte]
-%if 1               ;bugfix: make 'u' correctly handle [ESP],[ESP+x]
-    cmp al,24h
-    jnz noesp
-    mov al,4
-    jmp dop28
-noesp:    
-%endif
-	and	al,7
-	cmp	al,5
-	jne	dop24		;if not [EBP]
-	test	byte [regmem],0c0h
-	jnz	dop24		;if MOD != 0
-	call	disp32		;show 32-bit displacement instead of [EBP]
-	jmp	dop25
+dop23:
+	mov al,[regmem]
+	and al,7
+	cmp al,4
+	jne dop28		;if no SIB
+	mov al,[sibbyte]
+if 1               ;bugfix: make 'u' correctly handle [ESP],[ESP+x]
+	cmp al,24h
+	jnz @F
+	mov al,4
+	jmp dop28
+@@:
+endif
+	and al,7
+	cmp al,5
+	jne @F			;if not [EBP]
+	test byte ptr [regmem],0c0h
+	jnz @F			;if MOD != 0
+	call disp32		;show 32-bit displacement instead of [EBP]
+	jmp dop25
 
-dop24:	mov	word [di],'[E'
-	inc	di
-	inc	di
-	call	showreg16
-	mov	al,']'
+@@:
+	mov word ptr [di],'E['
+	inc di
+	inc di
+	call showreg16	;show 16bit register name (number in AL)
+	mov al,']'
 	stosb
 
-dop25:	mov	al,[sibbyte]
-	shr	al,1
-	shr	al,1
-	shr	al,1
-	and	al,7
-	cmp	al,4
-	je	disbad1		;if illegal
-	mov	word [di],'[E'
-	inc	di
-	inc	di
-	call	showreg16
-	mov	ah,[sibbyte]
+dop25:
+	mov al,[sibbyte]
+	shr al,1
+	shr al,1
+	shr al,1
+	and al,7
+	cmp al,4
+	je disbad1		;if illegal
+	mov word ptr [di],'E['
+	inc di
+	inc di
+	call showreg16
+	mov ah,[sibbyte]
 	test ah,0c0h
-	jz	dop27		;if SS = 0
-	mov	al,'*'
+	jz dop27		;if SS = 0
+	mov al,'*'
 	stosb
-	mov	al,'2'
+	mov al,'2'
 	test ah,80h
-	jz	dop26		;if *2
-	mov	al,'4'
+	jz @F			;if *2
+	mov al,'4'
 	test ah,40h
-	jz	dop26		;if *4
-	mov	al,'8'
-dop26:	stosb
-dop27:	mov	al,']'
+	jz @F			;if *4
+	mov al,'8'
+@@:
+	stosb
+dop27:
+	mov al,']'
 	stosb
 	ret
 
-;	32-bit addressing without SIB
+;--- 32-bit addressing without SIB
 
-dop28:	mov	word [di],'[E'
-	inc	di
-	inc	di
-	call	showreg16
-	mov	al,']'
+dop28:
+	mov word ptr [di],'E['
+	inc di
+	inc di
+	call showreg16
+	mov al,']'
 	stosb
 	ret
 
-;	Memory-only reference (OP_M)
+;--- Memory-only reference (OP_M)
 
-dop29:	call	getregmem
-	cmp	al,0c0h
-	jae	disbad1		;if it's a register reference
-	jmp	dop05
+dop_m:
+	call getregmem
+	cmp al,0c0h
+	jae disbad1		;if it's a register reference
+	jmp dop05
 
-disbad1:jmp	disbad		;this is not supposed to happen
+disbad1:
+	jmp disbad		;this is not supposed to happen
 
-;	Register reference from MOD R/M part (OP_R_MOD)
+;--- Register reference from MOD R/M part (OP_R_MOD)
 
-dop29a:	call	getregmem
-	cmp	al,0c0h
-	jb	disbad1		;if it's a memory reference
-	jmp	dop33
+dop_r_mod:
+	call getregmem
+	cmp al,0c0h
+	jb disbad1		;if it's a memory reference
+	jmp dop33
 
-;	Memory offset reference (OP_MOFFS)
+;--- Memory offset reference (OP_MOFFS)
 
-dop30:	call	showsize	;print the size and save various things
-	mov	al,5
-	test	byte [preflags],PRE32A
-	jnz	dop31		;if 32-bit addressing
-	inc	ax
-dop31:	mov	[regmem],al
-	jmp	dop06
+dop_moffs:
+	call showsize	;print the size and save various things
+	mov al,5
+	test [preflags],PRE32A
+	jnz @F			;if 32-bit addressing
+	inc ax
+@@:
+	mov [regmem],al
+	jmp dop06		;don't show size
 
-;	Pure register reference (OP_R)
+;--- Pure register reference (OP_R)
 
-dop32:	call	getregmem_r
+dop_r:
+	call getregmem_r
 
-dop33:	and	al,7		;entry point for regs from MOD R/M, and others
-	mov	cl,[disflags2]
-	or	[disflags],cl	;if it was variable size operand, the size
-				;should now be marked as known.
-	cmp	ah,0
-	jl	dop35		;if byte register
-	jz	dop34		;if word register
-dop33a:	mov	byte [di],'E'	;enter here from OP_ECX
-	inc	di
-dop34:	add	al,8
-dop35:	cbw
-	shl	ax,1
-	xchg	ax,bx		;mov bx,ax
-	mov	ax,[rgnam816+bx] ;get the register name
-	stosw
-	ret
-
-;	Register number embedded in the instruction (OP_R_ADD)
-
-dop36:	mov	al,[instru]
-	jmp	dop33
-
-;	AL or AX or EAX (OP_AX)
-
-dop37:	mov	al,0
-	jmp	dop33
-
-;	QWORD mem (OP_M64).
-
-dop38:	mov	ax,'Q'		;print 'QWORD'
-	jmp	dop40
-
-;	FLOAT mem (OP_MFLOAT).
-
-dop38a:	mov	ax,'FL'
-	stosw
-	mov	al,'O'
-	stosb
-	mov	ax,'AT'
-	jmp	dop38c
-
-;	DOUBLE mem (OP_MDOUBLE).
-
-dop38b:	mov	ax,'DO'
-	stosw
-	mov	ax,'UB'
-	stosw
-	mov	ax,'LE'
-dop38c:	stosw
-	call	showptr
-	jmp	dop42a
-
-;	TBYTE mem (OP_M80).
-
-dop39:	mov	ax,0ff00h+'T'	;print 'tbyte'
-dop40:	stosb
-	call	getregmem
-	cmp	al,0c0h
-	jae	disbad1		;if it's a register reference
-	and	byte [disflags],~DIS_F_SHOW	;don't show this
-	jmp	dop05
-
-;	far memory (OP_FARMEM).
-
-dop41:	call	dischk32d
-	jz	dop41a		;if not dword far
-	call	showdwd
-	sub	di,4		;erase "PTR "
-dop41a:	mov	ax,'FA'		;store "FAR "
-	stosw
-	mov	ax,'R '
-	stosw
-
-;	mem (OP_MXX).
-
-dop42:	and	byte [disflags],~DIS_F_SHOW	;don't show this
-dop42a:	call	getregmem
-	cmp	al,0c0h
-	jae	disbad5		;if it's a register reference
-	jmp	dop06
-
-disbad5:jmp	disbad
-
-;	far pointer (OP_FARP).
-
-dop43:	call	disgetword
-	push	ax
-	call	dischk32d
-	jz	dop44		;if not 32-bit address
-	call	disgetword
-	push	ax
-dop44:	call	disgetword
-	call hexword
-	mov	al,':'
-	stosb
-	call	dischk32d
-	jz	dop45		;if not 32-bit address
-	pop	ax
-	call hexword
-dop45:	pop	ax
-	call hexword
-	ret
-
-;	8-bit relative jump (OP_REL8)
-
-dop46:
-	call	disgetbyte
+dop33:					;<--- used by OP_RM, OP_R_MOD and OP_R_ADD
+	and al,7			;entry point for regs from MOD R/M, and others
+	mov cl,[disflags2]
+	or [disflags],cl	;if it was variable size operand, the size
+						;should now be marked as known.
+	cmp ah,0
+	jl dop35			;if byte register
+	jz dop34			;if word register
+	cmp ah,20h			;qword register (mmx)?
+	jz dop35_1
+	mov byte ptr [di],'E'
+	inc di
+dop34:
+	add al,8
+dop35:
 	cbw
-	jmp	dop48
+	shl ax,1
+	xchg ax,bx			;mov bx,ax
+	mov ax,word ptr [rgnam816+bx];get the register name
+	stosw
+	ret
+dop35_1:
+	push ax
+	mov ax,"MM"
+	stosw
+	pop ax
+	add al,'0'
+	stosb
+	ret
 
-;	16/32-bit relative jump (OP_REL1632)
+;--- Register number embedded in the instruction (OP_R_ADD)
 
-dop47:
-	call	disgetword
-	call	dischk32d
-	jz	dop48		;if not 32-bit offset
-	push	ax
-	call	showdwd
-	sub	di,4		;erase "PTR "
-	pop	dx
-	call	disgetword
-	mov	bx,[u_addr+0]
-	add	bx,[dis_n]
-	add	dx,bx
-	adc	ax,[u_addr+2]
+dop_r_add:
+	mov al,[instru]
+	jmp dop33
+
+;--- AL or AX or EAX (OP_AX)
+
+dop_ax:
+	mov al,0
+	jmp dop33
+
+;--- QWORD mem (OP_M64).
+;--- this operand type is used by:
+;--- + cmpxchg8b
+;--- + fild, fistp
+
+dop_m64:
+;	mov ax,'Q'		;print 'Q' +'WORD'
+	mov ah,20h		;size QWORD
+	jmp dop40
+
+;--- FLOAT (=REAL4) mem (OP_MFLOAT).
+
+dop_mfloat:
+	mov ax,'LF'
+	stosw
+	mov al,'O'
+	stosb
+	mov ax,'TA'
+	jmp dop38c
+
+;--- DOUBLE (=REAL8) mem (OP_MDOUBLE).
+
+dop_mdouble:
+	mov ax,'OD'
+	stosw
+	mov ax,'BU'
+	stosw
+	mov ax,'EL'
+dop38c:
+	stosw
+	call showptr
+	jmp dop42a
+
+;--- TBYTE (=REAL10) mem (OP_M80).
+
+dop_m80:
+	mov ax,0ff00h+'T'	;print 't' + 'byte'
+	stosb
+dop40:
+	call getregmem
+	cmp al,0c0h
+	jae disbad1		;if it's a register reference
+	and [disflags],not DIS_F_SHOW	;don't show this
+	jmp dop05
+
+;--- far memory (OP_FARMEM).
+;--- this is either a FAR16 (DWORD) or FAR32 (FWORD) pointer
+
+dop_farmem:
+	call dischk32d
+	jz @F			;if not dword far
+	call showdwd
+	sub di,4		;erase "PTR "
+@@:
+	mov ax,'AF'		;store "FAR "
+	stosw
+	mov ax,' R'
+	stosw
+
+;--- mem (OP_MXX).
+
+dop_mxx:
+	and [disflags],not DIS_F_SHOW	;don't show this
+dop42a:
+	call getregmem
+	cmp al,0c0h
+	jae disbad5		;if it's a register reference
+	jmp dop06		;don't show size
+
+disbad5:
+	jmp disbad
+
+;--- far immediate (OP_FARIMM). Either FAR16 or FAR32
+
+dop_farimm:
+	call disgetword
+	push ax
+	call dischk32d
+	jz @F			;if not 32-bit address
+	call disgetword
+	push ax
+@@:
+	call disgetword
 	call hexword
-	xchg	ax,dx
-	jmp	hexword		;call hexword and return
+	mov al,':'
+	stosb
+	call dischk32d
+	jz @F			;if not 32-bit address
+	pop ax
+	call hexword
+@@:
+	pop ax
+	call hexword
+	ret
+
+;--- 8-bit relative jump (OP_REL8)
+
+dop_rel8:
+	call disgetbyte
+	cbw
+	jmp dop48
+
+;--- 16/32-bit relative jump (OP_REL1632)
+
+dop_rel1632:
+	call disgetword
+	call dischk32d
+	jz dop48		;if not 32-bit offset
+	push ax
+if PM
+	test [bCSAttr],40h	;for 32bit code segments
+	jnz dop47_1			;no need to display "DWORD "
+endif
+	call showdwd
+	sub di,4		;erase "PTR "
+dop47_1:
+	pop dx
+	call disgetword
+	mov bx,[u_addr+0]
+	add bx,[dis_n]
+	add dx,bx
+	adc ax,[u_addr+2]
+	call hexword
+	xchg ax,dx
+	jmp hexword		;call hexword and return
 
 dop48:
-%if PM
-	test byte [bCSAttr],40h
-    jnz dop48_1
-%endif    
-	add	ax,[u_addr]
-	add	ax,[dis_n]
-	jmp	hexword		;call hexword and return
-%if PM
-dop48_1:
-	cpu 386
-	movsx eax,ax
-    add eax,[u_addr]
-    add eax,[dis_n]
-    push ax
-    shr eax,16
-    call hexword
-    pop ax
-    jmp hexword
-	cpu 8086
-%endif
+if PM
+	test [bCSAttr],40h
+	jnz @F
+endif
+	add ax,[u_addr]
+	add ax,[dis_n]
+	jmp hexword		;call hexword and return
+if PM
+@@:
+	.386
+	cwde	;=movsx eax,ax
+	add eax,dword ptr [u_addr]
+	add eax,dword ptr [dis_n]
+	jmp hexdword
+	.8086
+endif
 
-;	Check for ST(1) (OP_1CHK).
+;--- Check for ST(1) (OP_1CHK).
 
-dop49:	pop	ax		;discard return address
-	mov	al,[regmem]
-	and	al,7
-	cmp	al,1
-	je	dop50		;if it's ST(1)
-	jmp	da14		;another operand (but no comma)
+dop49:
+	pop ax		;discard return address
+	mov al,[regmem]
+	and al,7
+	cmp al,1
+	je dop50		;if it's ST(1)
+	jmp da14		;another operand (but no comma)
 
-dop50:	jmp	da21		;end of list
+dop50:
+	jmp da21		;end of list
 
-;	ST(I) (OP_STI).
+;--- ST(I) (OP_STI).
 
-dop51:	mov	al,[regmem]
-	and	al,7
-	xchg	ax,bx		;mov bx,ax
-	mov	ax,'ST'
+dop_sti:
+	mov al,[regmem]
+	and al,7
+	xchg ax,bx		;mov bx,ax
+	mov ax,'TS'
 	stosw			;store ST(bl)
-	mov	al,'('
+	mov al,'('
 	stosb
-	mov	ax,'0)'
-	or	al,bl
+	mov ax,')0'
+	or al,bl
 	stosw
 	ret
 
-;	CRx (OP_CR).
+;--- CRx (OP_CR).
 
-dop52:	mov	bx,'CR'
-	call	getregmem_r
-	cmp	al,4
-	ja	disbad4		;if too large
-	jne	dop52a
-	mov	byte [dismach],5	;CR4 is new to the 586
-dop52a:	cmp	word [index],SPARSE_BASE+22h
-	jne	dop55		;if not MOV CRx,xx
-	cmp	al,1
-	jne	dop55		;if not CR1
+dop_cr:
+	mov bx,'RC'
+	call getregmem_r
+	cmp al,4
+	ja disbad4		;if too large
+	jne @F
+	mov [dismach],5	;CR4 is new to the 586
+@@:
+	cmp word ptr [index],SPARSE_BASE+22h
+	jne dop55		;if not MOV CRx,xx
+	cmp al,1
+	jne dop55		;if not CR1
 
-disbad4:jmp	disbad		;can't MOV CR1,xx
+disbad4:
+	jmp disbad		;can't MOV CR1,xx
 
-;	DRx (OP_DR).
+;--- DRx (OP_DR).
 
-dop53:	call	getregmem_r
-	mov	bx,'DR'
-	mov	cx,-1		;no max or illegal value
-	jmp	dop55
+dop_dr:
+	call getregmem_r
+	mov bx,'RD'
+	mov cx,-1		;no max or illegal value
+	jmp dop55
 
-;	TRx (OP_TR).
+;--- TRx (OP_TR).
 
-dop54:	call	getregmem_r
-	cmp	al,3
-	jb	disbad		;if too small
-	cmp	al,6
-	jae	dop54a		;if TR6-7
-	mov	byte [dismach],4	;TR3-5 are new to the 486
-dop54a:	mov	bx,'TR'
+dop_tr:
+	call getregmem_r
+	cmp al,3
+	jb disbad		;if too small
+	cmp al,6
+	jae @F			;if TR6-7
+	mov [dismach],4	;TR3-5 are new to the 486
+@@:
+	mov bx,'RT'
 
-dop55:	xchg	ax,bx
+dop55:
+	xchg ax,bx
 	stosw			;store XX
-	xchg	ax,bx
-	or	al,'0'
+	xchg ax,bx
+	or al,'0'
 	stosb
 	ret
 
-;	Segment register (OP_SEGREG).
+;--- Segment register (OP_SEGREG).
 
-dop56:	call	getregmem_r
-	cmp	al,6
-	jae	disbad		;if not a segment register
-	cmp	al,2
-	je	dop57		;if SS
-	and	byte [disflags],~DIS_F_REPT	;clear flag:  don't repeat
-dop57:	cmp	al,4
-	jb	dop57a		;if not FS or GS
-	mov	byte [dismach],3;(no new 486-686 instructions involve seg regs)
-dop57a:	add	al,16
-	jmp	dop35		;go print it out
+dop_segreg:
+	call getregmem_r
+	cmp al,6
+	jae disbad		;if not a segment register
+	cmp al,2
+	je @F			;if SS
+	and [disflags],not DIS_F_REPT	;clear flag:  don't repeat
+@@:
+	cmp al,4
+	jb @F			;if not FS or GS
+	mov [dismach],3	;(no new 486-686 instructions involve seg regs)
+@@:
+	add al,16
+	jmp dop35		;go print it out
 
-;	Sign-extended immediate byte (OP_IMMS8).
+;--- Sign-extended immediate byte (OP_IMMS8). "push xx"
 
-dop58:	call	disgetbyte
-	cmp	al,0
-	xchg	ax,bx		;mov bl,al
-	mov	al,'+'
-	jge	dop58a		;if >= 0
-	neg	bl
-	mov	al,'-'
-dop58a:	stosb
-	xchg	ax,bx		;mov al,bl
-	jmp	dop59a		;call hexbyte and return
+dop_imms8:
+	call disgetbyte
+	cmp al,0
+	xchg ax,bx		;mov bl,al
+	mov al,'+'
+	jge @F			;if >= 0
+	neg bl
+	mov al,'-'
+@@:
+	stosb
+	xchg ax,bx		;mov al,bl
+	jmp dop59a		;call hexbyte and return
 
-;	Immediate byte (OP_IMM8).
+;--- Immediate byte (OP_IMM8).
 
-dop59:	call	disgetbyte
-dop59a:	jmp	hexbyte		;call hexbyte and return
+dop_imm8:
+	call disgetbyte
+dop59a:
+	jmp hexbyte		;call hexbyte and return
 
-;	Show ECX if it's a 32-bit operand.
+;--- Show MMx reg (OP_MMX; previously was "Show ECX if LOOPxx is 32bit)"
 
-dop59e:	call	dischk32d
-	jz	dop60a		;if not 32 bit instruction
-	mov	al,1
-	jmp	dop33a		;print out register ECX and return
+dop_mmx:
+	mov bx,'MM'
+	call getregmem_r
+	and al,7
+	jmp dop55
 
-;	Set flag to always show size (OP_SHOSIZ).
+;--- Set flag to always show size (OP_SHOSIZ).
 
-dop60:	or	byte [disflags],DIS_I_SHOWSIZ
-dop60a:	pop	ax		;discard return address
-	jmp	da14		;next...
+dop_shosiz:
+	or [disflags],DIS_I_SHOWSIZ
+dop60a:
+	pop ax			;discard return address
+	jmp da14		;next...
 
-disbad:	mov	sp,[savesp2]	;pop junk off stack
-	mov	word [dis_n],0
-	mov	word [preflags],0 ;clear preflags and preused
-	mov	byte [rmsize],80h	;don't display any memory
-	mov	word [dismach],0;forget about the machine type
-	and	byte [disflags],~DIS_I_SHOW	;and flags
-	call	disgetbyte
-	mov	di,prefixlist
-	mov	cx,10
-	repne	scasb
-	je	dbad1		;if it's a named prefix
-	dec	word [dis_n]
-	mov	bx,MNEM_DB	;offset of 'DB' mnemonic
-	mov	si,OPLIST_Z	;this says OP_8+OP_IMM
-	jmp	da13
+disbad:
+	mov sp,[savesp2]	;pop junk off stack
+	mov ax,offset da13
+	push ax
+	mov [dis_n],0
+	mov word ptr [preflags],0		;clear preflags and preused
+	mov [rmsize],80h				;don't display any memory
+	mov word ptr [dismach],0		;forget about the machine type
+	and [disflags],not DIS_I_SHOW	;and flags
+	call disgetbyte
+	mov di,offset prefixlist
+	mov cx,N_PREFIX
+	repne scasb
+	je @F			;if it's a named prefix
+	dec [dis_n]
+	mov bx,MN_DB	;offset of 'DB' mnemonic
+	mov si,OPLIST_26+OPTYPES_BASE;this says OP_IMM8
+	ret
+@@:
+	or [disflags],DIS_I_UNUSED	;print special flag
+	mov bx,N_PREFIX-1
+	sub bx,cx
+	shl bx,1
+	cmp bx,6*2
+	jb @F			;if SEG directive
+	mov bx,[prefixmnem+bx-6*2]
+	mov si,OPTYPES_BASE	;no operand
+	ret
+@@:
+	lea si,[bx+OPLIST_40+OPTYPES_BASE]	;this is OP_ES
+	mov bx,MN_SEG
+	ret
 
-dbad1:	or	byte [disflags],DIS_I_UNUSED	;print special flag
-	mov	bx,9
-	sub	bx,cx
-	shl	bx,1
-	cmp	bx,12
-	jb	dbad2		;if SEG directive
-	mov	bx,[prefixmnem+bx-12]
-	mov	si,OPTYPES_BASE
-	jmp	da13
-
-dbad2:	lea	si,[bx+OPLIST_ES]
-	mov	bx,MNEM_SEG
-	jmp	da13
-
-;	GETREGMEM_R - Get the reg part of the reg/mem part of the instruction
-;	Uses	CL
+;   GETREGMEM_R - Get the reg part of the reg/mem part of the instruction
+;   Uses    CL
 
 getregmem_r:
-	call	getregmem
-	mov	cl,3
-	shr	al,cl
-	and	al,7
+	call getregmem
+	mov cl,3
+	shr al,cl
+	and al,7
 	ret
 
-;	GETREGMEM - Get the reg/mem part of the instruction
+;--- GETREGMEM - Get the reg/mem part of the instruction
 
 getregmem:
-	test	byte [preused],GOTREGM
-	jnz	grm1		;if we have it already
-	or	byte [preused],GOTREGM
-	call	disgetbyte	;get the byte
-	mov	[regmem],al	;save it away
-
-grm1:	mov	al,[regmem]
+	test [preused],GOTREGM
+	jnz @F			;if we have it already
+	or [preused],GOTREGM
+	call disgetbyte	;get the byte
+	mov [regmem],al	;save it away
+@@:
+	mov al,[regmem]
 	ret
 
-;	SHOWOP	Show the op code
-;	Entry	SI	Null-terminated string containing the op mnemonic
-;	Exit	DI	Address of next available byte in output line
-;			(>= offset line_out + 32 due to padding)
-;	Uses	AL
+;   SHOWOP  Show the op code
+;   Entry   SI  Null-terminated string containing the op mnemonic
+;   Exit    DI  Address of next available byte in output line
+;           (>= offset line_out + 32 due to padding)
+;   Uses    AL
 
 showop:
-	mov	di,line_out+28
-	call	showstring
-	mov	al,' '
-so1:	stosb
-	cmp	di,line_out+36
-	jb	so1
+	mov di,offset line_out+MNEMONOFS
+showop1:
+	lodsb
+	mov ah,al
+	and al,7Fh
+	stosb
+	and ah,ah
+	jns showop1
+	mov al,' '
+so1:
+	stosb
+	cmp di,offset line_out+MNEMONOFS+8
+	jb so1
 	ret
 
-;	SHOWSEG - Show the segment descriptor in SEGMNT
-;	Entry	DI	Where to put it
-;	Exit	DI	Updated
-;	Uses	AX, BX
+;   SHOWSEG - Show the segment descriptor in SEGMNT
+;   Entry   DI  Where to put it
+;   Exit    DI  Updated
+;   Uses    AX, BX
 
 showseg:
-	mov	al,[segmnt]	;segment number
+	mov al,[segmnt]	;segment number
 	cbw
-	shl	ax,1
-	xchg	ax,bx		;mov bx,ax
-	mov	ax,[segrgnam+bx] ;get register name
+	shl ax,1
+	xchg ax,bx		;mov bx,ax
+	mov ax,word ptr [segrgnam+bx] ;get register name
 	stosw
 	ret
 
-;	SHOWSIZE - Print a description of the size
-;	Entry	AH	>0 for DWORD, =0 for WORD, <0 for BYTE
-;	Uses	AX
+;   SHOWSIZE - Print a description of the size
+;   Entry   AH  10h=DWORD, 00h=WORD, F0h=BYTE, 20h=QWORD
+;   Uses    AX
 
-;	SHOWPTR - Print " PTR "
-;	Uses	AX
+;   SHOWPTR - Print " PTR"
+;   Uses    AX
 
-;	SHOWDWD - Print "DWORD PTR"
-;	Uses	AX
+;   SHOWDWD - Print "DWORD PTR"
+;   Uses    AX
 
 showsize:
-	mov	[rmsize],ah	;save r/m size
-	mov	[sizeloc],di	;save where we're putting this
-	cmp	ah,0
-	jge	ssz1		;if word or dword
-	mov	ax,'BY'
+	mov [rmsize],ah	;save r/m size
+	mov [sizeloc],di;save where we're putting this
+	mov al,'Q'
+	cmp ah,20h
+	jz showqwd
+	cmp ah,0
+	jge @F		;if word or dword
+	mov ax,'YB'
 	stosw
-	mov	ax,'TE'
-	jmp	ssz3
-
-ssz1:	je	ssz2		;if word
-showdwd:mov	al,'D'
+	mov ax,'ET'
+	jmp ssz3
+@@:
+	je ssz2		;if word
+showdwd:		;<--- 
+	mov al,'D'
+showqwd:
 	stosb
-ssz2:	mov	ax,'WO'
+ssz2:
+	mov ax,'OW'
 	stosw
-	mov	ax,'RD'
-ssz3:	stosw
-showptr:mov	ax,' P'
+	mov ax,'DR'
+ssz3:
 	stosw
-	mov	ax,'TR'
+showptr:
+	mov ax,'P '
 	stosw
-	mov	al,' '
+	mov ax,'RT'
+	stosw
+	mov al,' '
 	stosb
 	ret
 
-;	DISP32 - Print 32-bit displacement for addressing modes.
-;	Entry	None
-;	Exit	None
-;	Uses	AX
+;   DISP32 - Print 32-bit displacement for addressing modes.
+;   Entry   None
+;   Exit    None
+;   Uses    AX
 
-disp32:	call	disgetword
-	push	ax
-	call	disgetword
+disp32:
+	call disgetword
+	push ax
+	call disgetword
 	call hexword
-	pop	ax
+	pop ax
 	call hexword
 	ret
 
-;	SHOWREG16 - Show 16-bit register name.
-;	Entry	AL	register number (0-7)
-;	Exit	None
-;	Uses	AX
+;   SHOWREG16 - Show 16-bit register name.
+;   Entry   AL  register number (0-7)
+;   Exit    None
+;   Uses    AX
 
 showreg16:
 	cbw
-	shl	ax,1
-	xchg	ax,bx
-	push	ax
-	mov	ax,[rgnam16+bx]
+	shl ax,1
+	xchg ax,bx
+	push ax
+	mov ax,word ptr [rgnam16+bx]
 	stosw
-	pop	ax
-	xchg	ax,bx
+	pop ax
+	xchg ax,bx
 	ret
 
-;	SHOWMACH - Return string "[needs math coprocessor]", etc.
-;	Exit	si	Address of string
-;		cx	Length of string, or 0 if not needed
-;	Uses	al, di
-
-showmach:
-	mov	si,needsmsg	;candidate message
-	test	byte [dmflags],DM_COPR
-	jz	sm1		;if not a coprocessor instruction
-	mov	byte [si+9],'7'	;change message text
-	mov	al,[mach_87]
-	cmp	byte [has_87],0
-	jnz	sm2		;if it has a coprocessor
-	mov	al,[machine]
-	cmp	al,[dismach]
-	jb	sm3		;if we display the message
-	mov	si,needsmath	;print this message instead
-	mov	cx,needsmath_L
-	ret
-
-sm1:	mov	byte [si+9],'6'	;reset message text
-	mov	al,[machine]
-sm2:	cmp	al,[dismach]
-	jae	sm4		;if no message (so far)
-sm3:	mov	al,[dismach]
-	add	al,'0'
-	mov	[si+7],al
-	mov	cx,needsmsg_L	;length of the message
-	ret
-
-;	Check for obsolete instruction.
-
-sm4:	mov	si,obsolete	;candidate message
-	mov	ax,[di-2]	;get info on this instruction
-	mov	cx,5
-	repne	scasw
-	jne	sm5		;if no matches
-	mov	di,obsmach + 5 - 1
-	sub	di,cx
-	xor	cx,cx		;clear CX:  no message
-	mov	al,[mach_87]
-	cmp	al,[di]
-	jle	sm5		;if this machine is OK
-	mov	cx,obsolete_L
-sm5:	ret
-
-;	DISGETBYTE - Get byte for disassembler.
-;	Entry	None
-;	Exit	AL	Next byte in instruction stream
-;	Uses	None
-
-disgetbyte:
-	push ds
-%if PM
-	test byte [bCSAttr],40h
-    jnz disgb_1
-%endif    
-	push si
-	mov	si,[u_addr]
-	mov	ds,[u_addr+4]
-	add	si,[cs:dis_n]	;index to the right byte
-	lodsb 			;get the byte
-    pop si
-	pop	ds
-	inc	word [dis_n]	;indicate that we've gotten this byte
-	ret
-%if PM    
-	cpu 386
-disgb_1:
-	push esi
-	lds	esi,[u_addr]
-	add	esi,[cs:dis_n]	;index to the right byte
-	a32 lodsb
-	pop	esi
-	pop	ds
-	inc	dword [dis_n]	;indicate that we've gotten this byte
-    ret
-    cpu 8086
-%endif    
-
-;	DISGETWORD - Get word for disassembler.
-;	Entry	None
-;	Exit	AX	Next word
-;	Uses	None
-
-disgetword:
-	push ds
-%if PM
-	test byte [bCSAttr],40h
-    jnz disgw_1
-%endif    
-	push	si		;save si
-	mov	si,[u_addr]
-	mov	ds,[u_addr+4]
-	add	si,[cs:dis_n]	;index to the right byte
-	lodsw
-	pop	si		;restore things
-	pop	ds
-	add	word [dis_n],2
-	ret
-%if PM 
-	cpu 386
-disgw_1:    
-	push esi
-	lds	esi,[u_addr]
-	add	esi,[cs:dis_n]	;index to the right byte
-	a32 lodsw
-	pop	esi
-	pop	ds
-	add	dword [dis_n],2
-	ret
-    cpu 8086
-%endif
-
-;	DISSHOWBYTES - Show bytes for the disassembler.
-;	Entry	BX	Number of bytes (must be > 0)
-;	Exit		u_addr updated
-;	Uses	BX, SI.
-
-disshowbytes:
-%if PM
-	test byte [bCSAttr],40h
-    jnz dissb_1
-%endif
-	mov	si,[u_addr]
-	mov	ds,[u_addr+4]
-dsb1:	lodsb
-	call hexbyte
-	dec	bx
-	jnz	dsb1
-	push ss
-	pop	ds
-	mov	[u_addr],si
-	ret
-%if PM
-	cpu 386
-dissb_1:
-	lds	esi,[u_addr]
-dsb2:
-	a32 lodsb
-	call hexbyte
-	dec	bx
-	jnz	dsb2
-	push ss
-	pop	ds
-	mov	[u_addr],esi
-	ret
-    cpu 8086
-%endif    
-
-;	MOVEOVER - Move the line to the right.
-;	Entry	DI	Last address + 1 of line so far
-;	Exit	CX	Number of bytes to move
-;		DI	Updated
-;	Uses	SI
-
-moveover:
-	cmp	word [sizeloc],0
-	je	mo1		;if sizeloc not saved
-	add	[sizeloc],cx
-
-mo1:	mov	si,di
-	add	di,cx
-	mov	cx,di
-	sub	cx,line_out+24
-	push	di
-	std
-	dec	si
-	dec	di
-	rep	movsb
-	pop	di
-	cld
-	ret
-
-;	DISCHK32D - Check for 32 bit operand size prefix.
+;--- DISCHK32D - Check for 32 bit operand size prefix (66h).
 
 dischk32d:
-	or	byte [preused],PRE32D
-	test	byte [preflags],PRE32D
+	or [preused],PRE32D
+	test [preflags],PRE32D
 	ret
 
-;	DUMPREGS - Dump registers.
+disasm endp
 
-dumpregs:mov	si,regs
-	mov	bx,regnames
-	mov	di,line_out
-	mov bp,regshi
-	mov	cx,8			;print all 8 std regs (16-bit)
-    test [regsdmp],byte 1
-    jz no386_2
-    mov cl,6			;room for 6 std regs (32-bit) only
-no386_2
-	call	dmpr1		;print first row
-	push	bx
-	call	trimputs
-	pop	bx
-	mov	di,line_out
-    test [regsdmp],byte 1
-    jnz no386_3
-	mov	cl,4			;print 4 segment regs
-	call	dmpr1
-    add si,2*2			;skip FS+GS
-    add bx,2*2			;skip FS+GS
-    jmp no386_31
-no386_3:
-    mov cl,2			;print rest of 32-bit std regs
-	call	dmpr1
-    push	bx
-    push	si
-	call	dmpflags	;print flags in 386 mode 
-	call	trimputs
-    pop		si
-    pop		bx
-	mov		di,line_out
-    mov     cl,6		;print ds, es, ss, cs, fs, gs
-    call    dmpr1_1
-    mov		bp,regh_eip
+;   DISGETBYTE - Get byte for disassembler.
+;   Entry   None
+;   Exit    AL  Next byte in instruction stream
+;   Uses    None
+
+disgetbyte proc
+	push ds
+if PM
+	test [bCSAttr],40h
+	jnz @F
+endif
+	push si
+	mov si,[u_addr]
+	mov ds,[u_addr+4]
+	add si,cs:[dis_n]	;index to the right byte
+	lodsb 				;get the byte
+	pop si
+	pop ds
+	inc [dis_n]			;indicate that we've gotten this byte
+	ret
+if PM
+	.386
+@@:
+	push esi
+	lds esi,fword ptr [u_addr]
+	add esi,dword ptr cs:[dis_n]	;index to the right byte
+	lodsb ds:[esi]
+	pop esi
+	pop ds
+	inc [dis_n]
+	ret
+	.8086
+endif
+disgetbyte endp
+
+;   DISGETWORD - Get word for disassembler.
+;   Entry   None
+;   Exit    AX  Next word
+;   Uses    None
+
+disgetword proc
+	push ds
+if PM
+	test [bCSAttr],40h
+	jnz @F
+endif
+	push si		;save si
+	mov si,[u_addr]
+	mov ds,[u_addr+4]
+	add si,cs:[dis_n]	;index to the right byte
+	lodsw
+	pop si		;restore things
+	pop ds
+	add [dis_n],2
+	ret
+if PM
+	.386
+@@:
+	push esi
+	lds esi,fword ptr [u_addr]
+	add esi,dword ptr cs:[dis_n]	;index to the right byte
+	lodsw ds:[esi]
+	pop esi
+	pop ds
+	add [dis_n],2
+	ret
+	.8086
+endif
+disgetword endp
+
+;   DISSHOWBYTES - Show bytes for the disassembler.
+;   Entry   BX  Number of bytes (must be > 0)
+;   Exit        u_addr updated
+;   Uses    BX, SI.
+
+disshowbytes proc
+if PM
+	test [bCSAttr],40h
+	jnz dissb_1
+endif
+	mov si,[u_addr]
+	mov ds,[u_addr+4]
+@@:
+	lodsb
+	call hexbyte
+	dec bx
+	jnz @B
+	push ss
+	pop ds
+	mov [u_addr],si
+	ret
+if PM
+	.386
+dissb_1:
+	lds esi,fword ptr [u_addr]
+@@:
+	lodsb ds:[esi]
+	call hexbyte
+	dec bx
+	jnz @B
+	push ss
+	pop ds
+	mov dword ptr [u_addr],esi
+	ret
+    .8086
+endif
+disshowbytes endp
+
+;   MOVEOVER - Move the line to the right - disassembler subfunction.
+;   Entry   DI  Last address + 1 of line so far
+;   Exit    CX  Number of bytes to move
+;   DI  Updated
+;   Uses    SI
+
+moveover proc
+	cmp [sizeloc],0
+	je @F		;if sizeloc not saved
+	add [sizeloc],cx
+@@:
+	mov si,di
+	add di,cx
+	mov cx,di
+	sub cx,offset line_out+MNEMONOFS
+	push di
+	std
+	dec si
+	dec di
+	rep movsb
+	pop di
+	cld
+	ret
+moveover endp
+
+;   SHOWMACH - Return string "[needs math coprocessor]", etc.
+;   Entry   di -> second item of table of 6 words
+;   Exit    si Address of string
+;           cx Length of string, or 0 if not needed
+;   Uses    al, di
+
+showmach proc
+	mov si,offset needsmsg		;candidate message
+	test [dmflags],DM_COPR
+	jz sm1				;if not a coprocessor instruction
+	mov byte ptr [si+9],'7'	;change message text
+	mov al,[mach_87]
+	cmp [has_87],0
+	jnz sm2				;if it has a coprocessor
+	mov al,[machine]
+	cmp al,[dismach]
+	jb sm3				;if we display the message
+	mov si,offset needsmath	;print this message instead
+	mov cx,needsmath_L
+	ret
+
+sm1:
+	mov byte ptr [si+9],'6'	;reset message text
+	mov al,[machine]
+sm2:
+	cmp al,[dismach]
+	jae sm4				;if no message (so far)
+sm3:
+	mov al,[dismach]
+	add al,'0'
+	mov [si+7],al
+	mov cx,needsmsg_L	;length of the message
+	ret
+
+;--- Check for obsolete instruction.
+
+sm4:
+	mov si,offset obsolete	;candidate message
+	mov ax,[di-2]	;get info on this instruction
+	mov cx,5
+	repne scasw
+	jne @F			;if no matches
+	mov di,offset obsmach + 5 - 1
+	sub di,cx
+	xor cx,cx		;clear CX:  no message
+	mov al,[mach_87]
+	cmp al,[di]
+	jle @F			;if this machine is OK
+	mov cx,obsolete_L
+@@:
+	ret
+showmach endp
+
+;--- DUMPREGS - Dump registers.
+;--- 16bit: 8 std regs, NL, skip 2, 4 seg regs, IP, flags
+;--- 32bit: 6 std regs, NL, 2 std regs+IP+FL, flags, NL, 6 seg regs
+
+dumpregs proc
+	mov si,offset regnames
+	mov di,offset line_out
+	mov cx,8			;print all 8 std regs (16-bit)
+	test [rmode],RM_386REGS
+	jz @F
+	mov cl,6			;room for 6 std regs (32-bit) only
+@@:
+	call dmpr1			;print first row
+	call trimputs
+	mov di,offset line_out
+	test [rmode],RM_386REGS
+	jnz @F
+	push si
+	add si,2*2			;skip "IP"+"FL"
+	mov cl,4			;print 4 segment regs
+	call dmpr1w
+	pop si
+	inc cx			;cx=1
+	call dmpr1		;print (E)IP
+	call dmpflags	;print flags in 8086 mode
+	jmp no386_31
+@@:
+	mov cl,4		;print rest of 32-bit std regs + EIP + EFL
+	call dmpr1d
+	push si
+	call dmpflags	;print flags in 386 mode 
+	call trimputs
+	pop si
+	mov di,offset line_out
+	mov cl,6		;print ds, es, ss, cs, fs, gs
+	call dmpr1w
 no386_31:
-    mov		cl,1
-    call    dmpr1		;print (E)IP
-	test	[regsdmp],byte 1
-    jnz		no386_32
-	call	dmpflags	;print flags in 8086 mode
-no386_32:    
-	call	trimputs
-	mov	ax,[reg_ip]
-	mov	di,u_addr
-	stosw
-	mov	ax,[regh_eip]
-	stosw
-	mov	ax,[reg_cs]
-	stosw
-	mov	byte [disflags],DIS_F_REPT | DIS_F_SHOW
-	call	disasm
-	mov	ax,[regh_eip]
-	mov	[u_addr+2],ax
-	mov	ax,[reg_ip]
-	mov	[u_addr],ax
-	ret
-    
+	call trimputs
 
-;	Function to print multiple register entries.
+;--- display 1 disassembled line at CS:[E]IP
+
+	mov si, offset regs.rIP
+	mov di, offset u_addr
+	movsw
+	movsw
+	mov ax,[regs.rCS]
+	stosw
+	mov [disflags],DIS_F_REPT or DIS_F_SHOW
+	call disasm
+
+;--- 'r' resets default setting for 'u' to CS:[E]IP
+
+	sizeprf
+	mov ax,[regs.rIP]
+	sizeprf
+	mov [u_addr],ax
+	ret
+dumpregs endp
+
+;--- Function to print multiple WORD/DWORD register entries.
+;--- SI->register names (2 bytes)
+;--- CX=count
 
 dmpr1:
-	test [regsdmp],byte 1
-    jnz dmpr1X
-dmpr1_1:
-    mov	ax,[bx]
-	inc	bx
-	inc	bx
-	stosw
-	mov	al,'='
-	stosb
-	lodsw
-	push	cx
-	call hexword
-	pop	cx
-	mov	al,' '
-	stosb
-	loop	dmpr1_1
-	ret
-;	Function to print multiple register entries.
+	test [rmode],RM_386REGS
+	jnz dmpr1d
 
-dmpr1X:	
-	mov al,'E'
-    stosb
-	mov	ax,[bx]
-	inc	bx
-	inc	bx
-	stosw
-	mov	al,'='
-	stosb
-    xchg bp,si
-	lodsw
-	push	cx
-	call hexword
-    xchg bp,si
-	lodsw
-	call hexword
-	pop	cx
-	mov	al,' '
-	stosb
-	loop	dmpr1X
-	ret
+;--- Function to print multiple WORD register entries.
+;--- SI->register names (2 bytes)
+;--- CX=count
 
-;   DUMPREGSF - Dump Floating Point Registers 
-
-;fregnames 
-;	db "CW", 2, "SW", 2, "TW", 2, "IP", 4, "CS", 2, "OO", 4, "OS", 2
-fregnames
-	db "CW", "SW", "TW"
-    db "OPC=", "IP=", "DP="
-dEmpty db "<empty>              "
-
-dumpregsF:
-	mov	di,line_out
-	mov	si,fregnames
-    sub sp,7*2+8*10
-    mov bp,sp
-    cpufpu 8086
-    fnsave [bp]
-    cpu 8086
-    mov cx,3
-nextfpr:    
+dmpr1w:
 	movsw
-    mov al,'='
-    stosb
-    push cx
-    mov ax,[bp+0]
-    call hexword
-    pop cx
-    mov al,' '
-    stosb
-    add bp,2
-    loop nextfpr
-    
-    movsw
-    movsw
-    mov ax,[bp+2]
-    and ax,0FFFh
-    call hexword
-    mov al,' '
-    stosb
-    
-    mov cx,2
-nextfp:    
-    push cx
-    movsw
-    movsb
-    mov al,[bp+2+1]
-    mov cl,4
-    shr al,cl
-    call hexnyb
-    mov ax,[bp+0]
-    call hexword
-    mov al,' '
-    stosb
-    add bp,4
-    pop cx
-    loop nextfp
-    
-	call trimputs
-    
-    mov si,[bp-5*2]
-    mov ax,[bp-6*2]	;get TOP
-
-	mov cl,11
-    shr ax, cl
-    mov cl,al
-    
-    and cl, 7
-    shl cl, 1
-    ror si, cl
-	mov	di,line_out
-	mov cx,8
-nextst:    
-    mov ax,"ST"
-    stosw
-    mov al,8
-    sub al,cl
-    add al,'0'
-    stosb
-    mov al,'='
-    stosb
-    mov ax,si
-    ror si, 1	;remain 8086 compatible here!
-    ror si, 1
-    and al,3
-    cmp al,3
-    jnz notinval
-    push si
-    push cx
-	mov si, dEmpty
-    mov cx, 21
-    rep movsb
-    pop cx
-    pop si
-    jmp regoutdone
-notinval
-    push cx
-    mov ax,[bp+8]
-    call hexword
-    mov al,'.'
-    stosb
-    mov ax,[bp+6]
-    call hexword
-    mov ax,[bp+4]
-    call hexword
-    mov ax,[bp+2]
-    call hexword
-    mov ax,[bp+0]
-    call hexword
-    pop cx
-regoutdone:
-    mov al,' '
-    stosb
-    test cl,1
-    jz nocr
-    push cx
-	call trimputs
-	mov	di,line_out
-    pop cx
-nocr:    
-	add bp,10
-    loop nextst
-    mov bp,sp
-    cpufpu 8086
-    frstor [bp]
-    cpu 8086
-    add sp,7*2+8*10
-	ret
-
-;	DMPFLAGS - Dump flags output.
-
-dmpflags:
-	mov	bx,[reg_fl]
-	mov	si,flgbits
-	mov	cx,8
-dmpf1:	mov	ax,[si+16]
-	test	bx,[si]
-	jz	dmpf2		;if not asserted
-	mov	ax,[si+32]
-dmpf2:	stosw
-	mov	al,' '
+	mov al,'='
 	stosb
-	inc	si
-	inc	si
-	loop	dmpf1
+	mov bx,[si+NUMREGNAMES*2-2]
+	mov ax,[bx]
+	call hexword
+	mov al,' '
+	stosb
+	loop dmpr1w
 	ret
 
-flgbits	dw	800h,400h,200h,80h,40h,10h,4,1
-flgnams	dw	'NV','UP','DI','PL','NZ','NA','PO','NC'
-flgnons	dw	'OV','DN','EI','NG','ZR','AC','PE','CY'
+;--- Function to print multiple DWORD register entries.
+;--- SI->register names (2 bytes)
+;--- CX=count
 
-;	SHOWSTRING - Print nonempty null-terminated string.
-
-showstring:
-	lodsb
-sstr1:	stosb
-	lodsb
-	cmp	al,0
-	jne	sstr1
+dmpr1d:
+	mov al,'E'
+	stosb
+	movsw
+	mov al,'='
+	stosb
+	mov bx,[si+NUMREGNAMES*2-2]
+	.386
+	mov eax,[bx]
+	.8086
+	call hexdword
+	mov al,' '
+	stosb
+	loop dmpr1d
 	ret
 
-;	HEXWORD - Print hex word (in AX).
-;	HEXBYTE - Print hex byte (in AL).
-;	HEXNYB - Print hex digit.
-;	Uses	al,cl.
+;--- the layout for FSAVE/FRSTOR depends on mode and 16/32bit
 
-hexword:
+if 0
+FPENV16 struc
+cw	dw ?
+sw	dw ?
+tw	dw ?
+fip	dw ?	;ip offset
+union
+opc dw ?	;real-mode: opcode[0-10], ip 16-19 in high bits
+fcs	dw ?	;protected-mode: ip selector
+ends
+fop	dw ?	;operand ptr offset
+union
+foph dw ?	;real-mode: operand ptr 16-19 in high bits
+fos	dw ?	;protected-mode: operand ptr selector
+ends
+FPENV16 ends
+
+FPENV32 struc
+cw	dw ?
+	dw ?
+sw	dw ?
+	dw ?
+tw	dw ?
+	dw ?
+fip	dd ?	;ip offset (real-mode: bits 0-15 only)
+union
+struct
+fopcr dd ?	;real-mode: opcode (0-10), ip (12-27)
+ends
+struct
+fcs	dw ?	;protected-mode: ip selector
+fopcp dw ?	;protected-mode: opcode(bits 0-10)
+ends
+ends
+foo	dd ?	;operand ptr offset (real-mode: bits 0-15 only)
+union
+struct
+fooh dd ?	;real-mode: operand ptr (12-27)
+ends
+struct
+fos	dw ?	;protected-mode: operand ptr selector
+	dw ?	;protected-mode: not used
+ends
+ends
+FPENV32 ends
+endif
+
+fregnames label byte
+	db "CW", "SW", "TW"
+	db "OPC=", "IP=", "DP="
+dEmpty db "empty"
+dNaN db "NaN"
+
+;--- dumpregsFPU - Dump Floating Point Registers 
+;--- modifies SI, DI, [E]AX, BX, CX, [E]DX
+
+dumpregsFPU proc
+	mov di,offset line_out
+	mov si,offset fregnames
+	mov bx,offset line_in + 2
+	sizeprf
+	fnsave [bx]
+
+;--- display CW. SW and TW
+
+	mov cx,3
+nextfpr:
+	movsw
+	mov al,'='
+	stosb
+	xchg si,bx
+	sizeprf		;lodsd
+	lodsw
+	xchg si,bx
 	push ax
-	mov	al,ah
+	call hexword
+	mov al,' '
+	stosb
+	loop nextfpr
+
+;--- display OPC
+;--- in 16bit format protected-mode, there's no OPC
+;--- for 32bit, there's one, but the location is different from real-mode
+
+	push bx
+if PM
+	call ispm
+	jz @F
+	add bx,2	;location of OPC in protected-mode differs from real-mode!
+	cmp [machine],3
+	jnb @F
+	add si,4	;no OPC for FPENV16 in protected-mode
+	jmp noopc
+@@:
+endif
+	movsw
+	movsw
+	xchg si,bx
+	sizeprf			;lodsd
+	lodsw			;skip word/dword
+	lodsw
+	xchg si,bx
+	and ax,07FFh	;bits 0-10 only
+	call hexword
+	mov al,' '
+	stosb
+noopc:
+	pop bx
+
+;--- display IP and DP
+
+	mov cl,2		;ch is 0 already
+nextfp:
+	push cx
+	movsw
+	movsb
+	xchg si,bx
+	sizeprf		;lodsd
+	lodsw
+	sizeprf		;mov edx,eax
+	mov dx,ax
+	sizeprf		;lodsd
+	lodsw
+	xchg si,bx
+if PM
+	call ispm
+	jz @F
+	call hexword
+	mov al,':'
+	stosb
+	jmp fppm
+@@:
+endif
+	mov cl,12
+	sizeprf		;shr eax,cl
+	shr ax,cl
+	cmp [machine],3
+	jb @F
+	call hexword
+	jmp fppm
+@@:
+	call hexnyb
+fppm:
+if PM
+	sizeprf		;mov eax,edx
+endif
+	mov ax,dx
+if PM
+	call ispm
+	jz @F
+	cmp [machine],3
+	jb @F
+	call hexdword
+	jmp fppm32
+@@:
+endif
+	call hexword
+fppm32:
+	mov al,' '
+	stosb
+	pop cx
+	loop nextfp
+
+	xchg si,bx
+	call trimputs
+
+;--- display ST0 - ST7
+
+	pop bp	;get TW
+	pop ax	;get SW
+	pop dx	;get CW (not used)
+
+	mov cl,10
+	shr ax, cl	;mov TOP to bits 1-3
+	and al, 00001110b
+	mov cl, al
+	ror bp, cl
+
+	mov cl,'0'
+nextst:         ;<- next float to display
+	mov di,offset line_out
+	push cx
+	mov ax,"TS"
+	stosw
+	mov al,cl
+	mov ah,'='
+	stosw
+	push di
+	test al,1
+	mov al,' '
+	mov cx,22
+	rep stosb
+	jz @F
+	mov ax,0A0Dh
+	stosw
+@@:
+	mov al,'$'
+	stosb
+	pop di
+
+	mov ax,bp
+	ror bp,1	;remain 8086 compatible here!
+	ror bp,1
+	and al,3	;00=valid,01=zero,02=NaN,03=Empty
+	jz isvalid
+	push si
+	mov si,offset dEmpty
+	mov cl, sizeof dEmpty
+	cmp al,3
+	jz @F
+	mov si,offset dNaN
+	mov cl, sizeof dNaN
+	cmp al,2
+	jz @F
+	mov al,'0'
+	stosb
+	mov cl,0
+@@:
+	rep movsb
+	pop si
+	jmp regoutdone
+isvalid:
+if PM
+	invoke FloatToStr, si, di
+else
+	mov ax,[si+8]
+	call hexword
+	mov al,'.'
+	stosb
+	mov ax,[si+6]
+	call hexword
+	mov ax,[si+4]
+	call hexword
+	mov ax,[si+2]
+	call hexword
+	mov ax,[si+0]
+	call hexword
+endif
+regoutdone:
+	mov dx,offset line_out
+	call int21ah9
+	pop cx
+	add si,10	;sizeof TBYTE
+	inc cl
+	cmp cl,'8'
+	jnz nextst
+	.286	;avoid WAIT prefix
+	sizeprf
+	frstor [line_in + 2]
+	.8086
+	ret
+dumpregsFPU endp
+
+;--- DMPFLAGS - Dump flags output.
+
+dmpflags proc
+	mov si,offset flgbits
+	mov cx,8	;lengthof flgbits
+nextitem:
+	lodsw
+	test ax,[regs.rFL]
+	mov ax,[si+16-2]
+	jz @F			;if not asserted
+	mov ax,[si+32-2]
+@@:
+	stosw
+	mov al,' '
+	stosb
+	loop nextitem
+	ret
+dmpflags endp
+
+if MMXSUPP
+	.386
+dumpregsMMX proc
+	fnsaved [line_in + 2]
+	mov si,offset line_in + 7*4 + 2
+	mov cl,'0'
+	mov di, offset line_out
+nextitem:
+	mov ax,"MM"
+	stosw
+	mov al,cl
+	mov ah,'='
+	stosw
+	push cx
+	mov dl,8
+nextbyte:
+	lodsb
 	call hexbyte
-	pop	ax
+	mov al,' '
+	test dl,1
+	jz @F
+	mov al,'-'
+@@:
+	stosb
+	dec dl
+	jnz nextbyte
+	dec di
+	mov ax,'  '
+	stosw
+	add si,2
+	pop cx
+	test cl,1
+	jz @F
+	push cx
+	call putsline
+	pop cx
+	mov di,offset line_out
+@@:
+	inc cl
+	cmp cl,'8'
+	jnz nextitem
+	fldenvd [line_in + 2]
+	ret
+dumpregsMMX endp
+	.8086
+endif
+
+;--- SHOWSTRING - Print nonempty null-terminated string.
+;--- SI->string
+;--- DI->buffer
+
+showstring proc
+	lodsb
+@@:
+	stosb
+	lodsb
+	cmp al,0
+	jne @B
+	ret
+showstring endp
+
+;   HEXDWORD - Print hex word (in EAX).
+;   clears HiWord(EAX)
+
+hexdword proc
+	push ax
+	.386
+	shr eax,16
+	.8086
+	call hexword
+	pop ax
+hexdword endp	;fall through!
+
+;   HEXWORD - Print hex word (in AX).
+;   HEXBYTE - Print hex byte (in AL).
+;   HEXNYB - Print hex digit.
+;   Uses    al.
+
+hexword proc
+	push ax
+	mov al,ah
+	call hexbyte
+	pop ax
+hexword endp	;fall through!
 
 hexbyte:
 	push ax
-	mov	cl,4
-	shr	al,cl
+	push cx
+	mov cl,4
+	shr al,cl
 	call hexnyb
-	pop	ax
+	pop cx
+	pop ax
 
 hexnyb:
-	and	al,0fh
-	add	al,90h		;these four instructions change to ascii hex
+	and al,0fh
+	add al,90h		;these four instructions change to ascii hex
 	daa
-	adc	al,40h
+	adc al,40h
 	daa
 	stosb
 	ret
 
-;	TAB_TO - Space fill until reaching the column indicated by AX.
-;	(Print a new line if necessary.)
+;   TAB_TO - Space fill until reaching the column indicated by AX.
+;   (Print a new line if necessary.)
 
-tab_to:	push	ax
-	sub	ax,di
-	ja	tabto1		;if there's room on this line
-	call	trimputs
-	mov	di,line_out
-
-tabto1:	pop	cx
-	sub	cx,di
-	mov	al,' '
-	rep	stosb		;space fill to the right end
+tab_to proc
+	push ax
+	sub ax,di
+	ja @F			;if there's room on this line
+	call trimputs
+	mov di,offset line_out
+@@:
+	pop cx
+	sub cx,di
+	mov al,' '
+	rep stosb		;space fill to the right end
 	ret
+tab_to endp
 
-;	TRIMPUTS - Trim excess blanks from string and print (with CR/LF).
-;	PUTSLINE - Add CR/LF to string and print it.
-;	PUTS - Print string through DI.
+;   TRIMPUTS - Trim excess blanks from string and print (with CR/LF).
+;   PUTSLINE - Add CR/LF to string and print it.
+;   PUTS - Print string through DI.
 
 trimputs:
-	dec	di
-	cmp	byte [di],' '
-	je	trimputs
-	inc	di
+	dec di
+	cmp byte ptr [di],' '
+	je trimputs
+	inc di
 
 putsline:
-	mov	ax,LF * 256 + CR
+	mov ax,LF * 256 + CR
 	stosw
 
 puts:
-	mov	cx,di
-	mov	dx,line_out
-	sub	cx,dx
-stdout:    			;write DS:DX, size CX to STDOUT (1)
+	mov cx,di
+	mov dx,offset line_out
+	sub cx,dx
+
+stdout proc			;write DS:DX, size CX to STDOUT (1)
 	call InDos
-    jnz int29_puts
-	mov	bx,1		;standard output
-	mov	ah,40h		;write to file
-    call doscall
-    ret
-int29_puts:    
+	jnz @F
+	mov bx,1		;standard output
+	mov ah,40h		;write to file
+	call doscall
+	ret
+@@:					;use int 29h for output
 	jcxz nooutput
 	push si
-    mov si,dx
-nextchar:    
-    lodsb
-    mov bx,0007
-    mov ah,0Eh
-    int 10h
-    loop nextchar
-    pop si
+	mov si,dx
+@@:
+	lodsb
+	mov bx,0007
+	mov ah,0Eh
+	int 10h
+	loop @B
+	pop si
 nooutput:
-    ret
+	ret
+stdout endp
 
-createdummytask:
+createdummytask proc
 
-	mov di, regs
-    mov cx, 16*2	;(8 std, 6 seg, ip, fl) * 2
-    xor ax, ax
-    rep stosw
+	mov di, offset regs
+	mov cx, sizeof regs / 2
+	xor ax, ax
+	rep stosw
 
-    mov ah,48h		;get largest free block
-    mov bx,-1
-    int 21h
-    mov ah,48h		;allocate it
-    int 21h
-    jc  ct_done
+	mov ah,48h		;get largest free block
+	mov bx,-1
+	int 21h
+	cmp bx,11h		;must be at least 110h bytes!!!
+	jc ct_done
+	mov ah,48h		;allocate it
+	int 21h
+	jc ct_done		;shouldn't happen
 
-    
-    push bx
-	mov	di,reg_ds	;fill segment registers ds,es,ss,cs
+	mov byte ptr [regs.rIP+1],1	;IP=100h
+
+	call setespefl
+
+	push bx
+	mov di,offset regs.rDS	;init regs.rDS,regs.rES,regs.rSS,regs.rCS
 	stosw
 	stosw
 	stosw
 	stosw
-    mov word [reg_ip],100h
-    pushf
-    pop word [reg_fl]
-	call adusetup
-	mov	bx,[reg_cs]	;bx:dx = where to load program
-	mov	es,bx
-    pop ax			;get size of memory block
-    mov dx,ax
-    add dx,bx
-	mov	[es:ALASAP],dx
-	cmp	ax,1000h
-	jbe	init14		;if memory left <= 64K
-	xor	ax,ax		;ax = 1000h (same thing, after shifting)
-init14:
-	mov	cl,4
-	shl	ax,cl
-	dec	ax
-	dec	ax
-	mov	[reg_sp],ax
+	call setup_adu
+	mov bx,[regs.rCS]	;bx:dx = where to load program
+	mov es,bx
+	pop ax			;get size of memory block
+	mov dx,ax
+	add dx,bx
+	mov es:[ALASAP],dx
+	cmp ax,1000h
+	jbe @F			;if memory left <= 64K
+	xor ax,ax		;ax = 1000h (same thing, after shifting)
+@@:
+	mov cl,4
+	shl ax,cl
+	dec ax
+	dec ax
+	mov [regs.rSP],ax
 	xchg ax,di		;es:di = child stack pointer
-	xor	ax,ax
+	xor ax,ax
 	stosw			;push 0 on client's stack
 
-;	Create a PSP
+;--- Create a PSP
 
-	mov	ah,55h		;create child PSP
-	mov	dx,es
-	mov	si,[es:ALASAP]
-	clc			;works around OS/2 bug
-	int	21h
-	mov	word [es:TPIVOFS],int22
-	mov	[es:TPIVSEG],cs
-    cmp byte [bInit],0
-    jnz nomemtouch
-    inc byte [bInit]
-    mov [es:100h],byte 0C3h	;place opcode for 'RET' at CS:IP
-nomemtouch:
-    mov [pspdbe],es
-    mov ax,es
-    dec ax
-    mov es,ax
-    inc ax
-    mov [es:0001],ax
-    mov byte [es:0008],0
-    push cs
-    pop es
-    mov bx,cs
-    call setpsp
-ct_done:    
-    ret
+	mov ah,55h		;create child PSP
+	mov dx,es
+	mov si,es:[ALASAP]
+	clc				;works around OS/2 bug
+	int 21h
+	mov word ptr es:[TPIV+0],offset int22
+	mov es:[TPIV+2],cs
+	cmp [bInit],0
+	jnz @F
+	inc [bInit]
+	mov byte ptr es:[100h],0C3h	;place opcode for 'RET' at CS:IP
+@@:
+	mov [pspdbe],es
+	mov ax,es
+	dec ax
+	mov es,ax
+	inc ax
+	mov es:[0001],ax
+	mov byte ptr es:[0008],0
+	push ds			;restore ES
+	pop es
+	call setpspdbg	;set debugger's PSP
+ct_done:
+	ret
 
+createdummytask endp
 
+if PM
 
-;	I/O buffers.  (End of permanently resident part.)
+;--- hook int 2Fh if a DPMI host is found
+;--- for Win9x and DosEmu host
+;--- int 2Fh, ax=1687h is not hooked, however
+;--- because it doesn't work. Debugging
+;--- in protected-mode still may work, but
+;--- the initial-switch to PM must be single-stepped
+;--- modifies AX, BX, CX, DX, DI
+
+hook2f proc
+	cmp word ptr [oldi2f+2],0
+	jnz hook2f_2
+	mov ax,1687h			;DPMI host installed?
+	int 2Fh
+	and ax,ax
+	jnz hook2f_2
+	mov word ptr [dpmientry+0],di	;true host DPMI entry
+	mov word ptr [dpmientry+2],es
+	mov word ptr [dpmiwatch+0],di
+	mov word ptr [dpmiwatch+2],es
+	cmp [bNoHook2F],0				;can int 2Fh be hooked?
+	jnz hook2f_2
+	mov word ptr [dpmiwatch+0],offset mydpmientry
+	mov word ptr [dpmiwatch+2],cs
+	mov ax,352Fh
+	int 21h
+	mov word ptr [oldi2f+0],bx
+	mov word ptr [oldi2f+2],es
+	mov dx,offset debug2F
+	mov ax,252Fh
+	int 21h
+	push ds
+	pop es
+if DISPHOOK
+	mov ax,cs
+	mov di,offset dpmihookcsip
+	call hexword
+	inc di
+	mov ax,offset mydpmientry
+	call hexword
+	mov dx,offset dpmihook
+	call int21ah9
+endif
+hook2f_2:
+	push ds
+	pop es
+	ret
+hook2f endp
+
+endif
+
+;--- I/O buffers.  (End of permanently resident part.)
 
 end1:
+line_in		db 255,0,CR		;length = 257
+line_out	equ end1+258	;length = 1 + 263
+real_end	equ end1+258+264
 
-line_in	db	255,0,CR	;length = 257
-line_out equ	end1+258	;length = 1 + 263
-real_end equ	end1+258+264
-staksiz	equ	200h
+_TEXT ends
 
-initcont:    
-    int 21h			;free rest of DOS memory
-	mov	byte [line_out-1],'0'	;initialize line_out
-	call ll3		;load a program if one has been given at the command line
-	jmp	cmd3		;done
+_ITEXT segment
 
-				;lots of bytes follow this
+initcont:
+	int 21h			;free rest of DOS memory
+	mov byte ptr [line_out-1],'0'	;initialize line_out?
+	cmp [fileext],0
+	jz @F
+	call loadfile
+@@:
+	jmp cmdloop
 
 ;---------------------------------------
-;	Debug initialization code.
+;--- Debug initialization code.
 ;---------------------------------------
 
-	align	2		;align on word boundary
-fp_status dw	5a5ah		;FPU status word
+imsg1	db DBGNAME,' version 1.18.  Debugger.',CR,LF,CR,LF
+	db 'Usage: ', DBGNAME, ' [[drive:][path]progname [arglist]]',CR,LF,CR,LF
+	db '  progname (executable) file to debug or examine',CR,LF
+	db '  arglist parameters given to program',CR,LF,CR,LF
+	db 'For a list of debugging commands, '
+	db 'run ', DBGNAME, ' and type ? at the prompt.',CR,LF,'$'
 
-imsg1	db	DBGNAME,' version 1.06.  Debugger.',CR,LF,CR,LF
-	db	'Usage:	', DBGNAME, ' [[drive:][path]progname [arglist]]',CR,LF,CR,LF
-	db	'  progname	(executable) file to debug or examine',CR,LF
-	db	'  arglist	parameters given to program',CR,LF,CR,LF
-	db	'For a list of debugging commands, '
-	db	'run ', DBGNAME, ' and type ? at the prompt.',CR,LF,'$'
+imsg2	db 'Invalid switch - '
+imsg2a	db 'x',CR,LF,'$'
+if PM
+if DOSEMU
+dDosEmuDate db "02/25/93"
+endif
+endif
 
-imsg2	db	'Invalid switch - '
-imsg2a	db	'x',CR,LF,'$'
-
-initcode:
+initcode proc
 	cld
+	mov ax,cs
+	mov word ptr [execblk.cmdtail+2],ax
+	mov word ptr [execblk.fcb1+2],ax
+	mov word ptr [execblk.fcb2+2],ax
+	mov [pspdbg],ax
 
-	mov	[execblk+4],cs	;set up parameter block for exec command
-	mov	[execblk+8],cs
-	mov	[execblk+12],cs
-    mov [pspdbg],es
+;--- Check for console input vs. input from a file or other device.
 
-;	Check for console input vs. input from a file or other device.
+	mov ax,4400h	;IOCTL--get info
+	xor bx,bx
+	int 21h
+	jc @F			;if not device
+	and dl,81h		;check if console device
+	cmp dl,81h
+	jne @F			;if not the console input
+	mov [notatty],0	;it _is_ a tty
+@@:
 
-	mov	ax,4400h	;IOCTL--get info
-	xor	bx,bx
-	int	21h
-	jc	init1		;if not device
-	and	dl,81h		;check if console device
-	cmp	dl,81h
-	jne	init1		;if not the console input
-	mov	byte [notatty],0	;it _is_ a tty
+;--- Check DOS version
 
-;	Check DOS version
-
-init1:	mov	ah,30h	;check DOS version
-	int	21h
+	mov ax,3000h	;check DOS version
+	int 21h
 	xchg al,ah
-	cmp	ax,31fh
-	jb	init2		;if version < 3.3, then don't use new INT 25h method
-	inc	byte [usepacket]
-    cmp ax,070Ah
-    jb  init2
-	inc	byte [usepacket]
+	cmp ax,31fh
+	jb init2		;if version < 3.3, then don't use new INT 25h method
+	inc [usepacket]
+if VDD
+	cmp ah,5
+	jnz isnot_nt
+	mov ax,3306h
+	int 21h
+	cmp bx,3205h
+	jnz isnot_nt
+	mov si,offset szDebxxVdd	;DS:SI->"DEBXXVDD.DLL"
+	mov bx,offset szDispatch	;DS:BX->"Dispatch"
+	mov di,offset szInit		;ES:DI->"Init"
+	RegisterModule
+	jc init2
+	mov [hVdd], ax
+	jmp isntordos71
+szDebxxVdd	db "DEBXXVDD.DLL",0
+szDispatch	db "Dispatch",0
+szInit		db "Init",0
+isnot_nt:
+endif
+	cmp ax,070Ah
+	jb init2
+isntordos71:
+	inc [usepacket]
 
-;	Determine the processor type.  This is adapted from code in the
-;	Pentium<tm> Family User's Manual, Volume 3:  Architecture and
-;	Programming Manual, Intel Corp., 1994, Chapter 5.  That code contains
-;	the following comment:
+;   Determine the processor type.  This is adapted from code in the
+;   Pentium<tm> Family User's Manual, Volume 3:  Architecture and
+;   Programming Manual, Intel Corp., 1994, Chapter 5.  That code contains
+;   the following comment:
 
-;	This program has been developed by Intel Corporation.
-;	Software developers have Intel's permission to incorporate
-;	this source code into your software royalty free.
+;   This program has been developed by Intel Corporation.
+;   Software developers have Intel's permission to incorporate
+;   this source code into your software royalty free.
 
-;	Intel 8086 CPU check.
-;	Bits 12-15 of the FLAGS register are always set on the 8086 processor.
-;	Probably the 186 as well.
+;   Intel 8086 CPU check.
+;   Bits 12-15 of the FLAGS register are always set on the 8086 processor.
+;   Probably the 186 as well.
 
 init2:
+	push sp
+	pop ax
+	cmp ax,sp		
+	jnz init6		;if 8086 or 80186 (can't tell them apart)
+
+;   Intel 286 CPU check.
+;   Bits 12-15 of the flags register are always clear on the
+;   Intel 286 processor in real-address mode.
+
+	mov [machine],2
 	pushf			;get original flags into AX
-	pop	ax
-	mov	cx,ax		;save them
-	and	ah,0fh		;clear bits 12-15
-	push	ax		;save new flags value on stack
+	pop ax
+	or ax,0f000h	;try to set bits 12-15
+	push ax			;save new flags value on stack
 	popf			;replace current flags value
 	pushf			;get new flags
-	pop	ax		;store new flags in AX
-	and	ah,0f0h		;check to see whether bits 12-15 are set
-	cmp	ah,0f0h
-	je	init6		;if 8086 or 80186 (can't tell them apart)
+	pop ax			;store new flags in AX
+	test ah,0f0h	;if bits 12-15 clear, CPU = 80286
+	jz init6		;if 80286
 
-;	Intel 286 CPU check.
-;	Bits 12-15 of the flags register are always clear on the
-;	Intel 286 processor in real-address mode.
+;   Intel 386 CPU check.
+;   The AC bit, bit #18, is a new bit introduced in the EFLAGS
+;   register on the Intel486 DX cpu to generate alignment faults.
+;   This bit cannot be set on the Intel386 CPU.
 
-	or	cx,0f000h	;try to set bits 12-15
-	push	cx		;save new flags value on stack
-	popf			;replace current flags value
-	pushf			;get new flags
-	pop	ax		;store new flags in AX
-	test	ah,0f0h	;if bits 12-15 clear, CPU = 80286
-	mov	byte [machine],2
-	jz	init6		;if 80286
+;   It is now safe to use 32-bit opcode/operands.
 
-;	Intel 386 CPU check.
-;	The AC bit, bit #18, is a new bit introduced in the EFLAGS
-;	register on the Intel486 DX cpu to generate alignment faults.
-;	This bit cannot be set on the Intel386 CPU.
+	.386
 
-;	It is now safe to use 32-bit opcode/operands.
-
-	cpufpu	386
-
-	inc	byte [machine]
-	mov	bx,sp		;save current stack pointer to align
-	and	sp,~3		;align stack to avoid AC fault
+	inc [machine]
+	mov bx,sp		;save current stack pointer to align
+	and sp,not 3	;align stack to avoid AC fault
 	pushfd			;push original EFLAGS
-	pop	eax		;get original EFLAGS
-	mov	ecx,eax		;save original EFLAGS in CX
-	xor	eax,40000h	;flip (XOR) AC bit in EFLAGS
-	push	eax		;put new EFLAGS value on stack
+	pop eax			;get original EFLAGS
+	mov ecx,eax		;save original EFLAGS in CX
+	xor eax,40000h	;flip (XOR) AC bit in EFLAGS
+	push eax		;put new EFLAGS value on stack
 	popfd			;replace EFLAGS value
 	pushfd			;get new EFLAGS
-	pop	eax		;store new EFLAGS value in EAX
-	cmp	eax,ecx
-	jz	init5		;if 80386 CPU
+	pop eax			;store new EFLAGS value in EAX
+	cmp eax,ecx
+	jz init5		;if 80386 CPU
 
-;	Intel486 DX CPU, Intel487 SX NDP, and Intel486 SX CPU check.
-;	Checking for ability to set/clear ID flag (bit 21) in EFLAGS
-;	which indicates the presence of a processor with the ability
-;	to use the CPUID instruction.
+;   Intel486 DX CPU, Intel487 SX NDP, and Intel486 SX CPU check.
+;   Checking for ability to set/clear ID flag (bit 21) in EFLAGS
+;   which indicates the presence of a processor with the ability
+;   to use the CPUID instruction.
 
-	inc	byte [machine]	;it's a 486
-	mov	eax,ecx		;get original EFLAGS
-	xor	eax,200000h	;flip (XOR) ID bit in EFLAGS
-	push	eax		;save new EFLAGS value on stack
+	inc [machine]	;it's a 486
+	mov eax,ecx		;get original EFLAGS
+	xor eax,200000h	;flip (XOR) ID bit in EFLAGS
+	push eax		;save new EFLAGS value on stack
 	popfd			;replace current EFLAGS value
 	pushfd			;get new EFLAGS
-	pop	eax		;store new EFLAGS in EAX
-	cmp	eax,ecx		;check if it's changed
-	je	init5		;if it's a 486 (can't toggle ID bit)
-	push	ecx
+	pop eax			;store new EFLAGS in EAX
+	cmp eax,ecx		;check if it's changed
+	je init5		;if it's a 486 (can't toggle ID bit)
+	push ecx
 	popfd			;restore AC bit in EFLAGS first
-	mov	sp,bx		;restore original stack pointer
+	mov sp,bx		;restore original stack pointer
 
-;	Execute CPUID instruction.
+;--- Execute CPUID instruction.
 
-	cpu	586
+	.586
 
-	xor	eax,eax		;set up input for CPUID instruction
+	xor eax,eax		;set up input for CPUID instruction
 	cpuid
-	cmp	eax,1
-	jl	init6		;if 1 is not a valid input value for CPUID
-	xor	eax,eax		;otherwise, run CPUID with ax = 1
-	inc	eax
+	cmp eax,1
+	jl init6		;if 1 is not a valid input value for CPUID
+	xor eax,eax		;otherwise, run CPUID with ax = 1
+	inc eax
 	cpuid
-	mov	al,ah
-	and	al,0fh		;bits 8-11 are the model number
-	cmp	al,6
-	jbe	init3		;if <= 6
-	mov	al,6		;if > 6, set it to 6
-init3:	mov	[machine],al	;save it
-	jmp	init6		;don't restore SP
+if MMXSUPP
+	test edx,800000h
+	setnz [has_mmx]
+endif
+	mov al,ah
+	and al,0fh		;bits 8-11 are the model number
+	cmp al,6
+	jbe init3		;if <= 6
+	mov al,6		;if > 6, set it to 6
+init3:
+	mov [machine],al;save it
+	jmp init6		;don't restore SP
 
 init5:
-	push	ecx
+	push ecx
 	popfd			;restore AC bit in EFLAGS first
-	mov	sp,bx		;restore original stack pointer
+	mov sp,bx		;restore original stack pointer
 
-	cpufpu	8086 	;back to 1980s technology
-    
-;	Next determine the type of FPU in a system and set the mach_87
-;	variable with the appropriate value.  All registers are used by
-;	this code; none are preserved.
+	.8086		 	;back to 1980s technology
 
-;	Coprocessor check.
-;	The algorithm is to determine whether the floating-point
-;	status and control words can be written to.  If not, no
-;	coprocessor exists.  If the status and control words can be
-;	written to, the correct coprocessor is then determined
-;	depending on the processor ID.  The Intel386 CPU can
-;	work with either an Intel 287 NDP or an Intel387 NDP.
-;	The infinity of the coprocessormust be checked
-;	to determine the correct coprocessor ID.
+;   Next determine the type of FPU in a system and set the mach_87
+;   variable with the appropriate value.  All registers are used by
+;   this code; none are preserved.
 
-init6:	mov	al,[machine]
-	mov	[mach_87],al	;by default, set mach_87 to machine
-    inc byte [has_87]
-    cmp al,5			;a Pentium or above always will have a FPU
-    jnc init7
-    dec byte [has_87]
+;   Coprocessor check.
+;   The algorithm is to determine whether the floating-point
+;   status and control words can be written to.  If not, no
+;   coprocessor exists.  If the status and control words can be
+;   written to, the correct coprocessor is then determined
+;   depending on the processor ID.  The Intel386 CPU can
+;   work with either an Intel 287 NDP or an Intel387 NDP.
+;   The infinity of the coprocessormust be checked
+;   to determine the correct coprocessor ID.
 
-	fninit			;reset FP status word
-	mov	word [fp_status],5a5ah	;restore temp word to nonzero value
-	fnstsw	[fp_status]	;save FP status word
-	mov	ax,[fp_status]	;check FP status word
-	cmp	al,0
-	jne	init7		;if no FPU present
+init6:
+	mov al,[machine]
+	mov [mach_87],al	;by default, set mach_87 to machine
+	inc [has_87]
+	cmp al,5			;a Pentium or above always will have a FPU
+	jnc init7
+	dec [has_87]
 
-	fnstcw	[fp_status]	;save FP control word
-	mov	ax,[fp_status]	;check FP control word
-	and	ax,103fh	;see if selected parts look OK
-	cmp	ax,3fh
-	jne	init7		;if no FPU present
-	inc	byte [has_87]	;there's an FPU
+	fninit				;reset FP status word
+	mov ax,5a5ah		;init with non-zero value
+	push ax
+	mov bp,sp
+	fnstsw [bp]			;save FP status word
+	pop ax				;check FP status word
+	cmp al,0
+	jne init7			;if no FPU present
 
-;	If we're using a 386, check for 287 vs. 387 by checking whether
-;	+infinity = -infinity.
+	push ax
+	fnstcw [bp]			;save FP control word
+	pop ax				;check FP control word
+	and ax,103fh		;see if selected parts look OK
+	cmp ax,3fh
+	jne init7			;if no FPU present
+	inc [has_87]		;there's an FPU
 
-	cmp	byte [machine],3
-	jne	init7		;if not a 386
+;--- If we're using a 386, check for 287 vs. 387 by checking whether
+;--- +infinity = -infinity.
+
+	cmp [machine],3
+	jne init7		;if not a 386
 	fld1			;must use default control from FNINIT
 	fldz			;form infinity
-	fdivp	ST1		;1 / 0 = infinity
-	fld	ST0		;form negative infinity
+	fdivp ST(1),ST		;1 / 0 = infinity
+	fld ST			;form negative infinity
 	fchs
 	fcompp			;see if they are the same and remove them
-	fstsw	[fp_status]	;look at status from FCOMPP
-	mov	ax,[fp_status]
+	push ax
+	fstsw [bp]		;look at status from FCOMPP
+	pop ax
 	sahf
-	jnz	init7		;if they are different, then it's a 387
-	dec	byte [mach_87]	;otherwise, it's a 287
+	jnz init7		;if they are different, then it's a 387
+	dec [mach_87]	;otherwise, it's a 287
+init7:
 
-;	Interpret switches and erase them from the command line.
+;--- remove size and addr prefixes if cpu is < 80386
 
-init7:	mov	ax,3700h	;get switch character
-	int	21h
-	mov	[switchar],dl
-	cmp	dl,'/'
-	jne	init8
-	mov	[swch1],dl
-init8:
-	mov	si,DTA+1
-init9:
+	cmp [machine],3
+	jnb nopatch
+	mov si,offset patches
+	mov cx,cntpatch
+@@:
+	lodsw
+	xchg ax,bx
+	mov byte ptr [bx],90h
+	loop @B
+nopatch:
+
+;--- Interpret switches and erase them from the command line.
+
+	mov ax,3700h		;get switch character
+	int 21h
+	mov [switchar],dl
+	cmp dl,'/'
+	jne @F
+	mov [swch1],dl
+@@:
+	mov si,DTA+1
+@@:
 	lodsb
-	cmp	al,' '
-	je	init9
-	cmp	al,TAB
-	je	init9
+	cmp al,' '
+	je @B
+	cmp al,TAB
+	je @B
 
-;	Process the /? switch (or the [switchar]? switch).
-;	If switchar != / and /? occurs, make sure nothing follows.
+;--- Process the /? switch (or the [switchar]? switch).
+;--- If switchar != / and /? occurs, make sure nothing follows.
 
-	cmp	al,dl
-	je	init11		;if switch character
-	cmp	al,'/'
-	jne	init12		;if not the help switch
-	mov	al,[si]
-	cmp	al,'?'
-	jne	init12		;if not /?
-	mov	al,[si+1]
-	cmp	al,' '
-	je	init10		;if nothing after /?
-	cmp	al,TAB
-	je	init10		;ditto
-	cmp	al,CR
-	jne	init12		;if not end of line
+	cmp al,dl
+	je init11		;if switch character
+	cmp al,'/'
+	jne init12		;if not the help switch
+	mov al,[si]
+	cmp al,'?'
+	jne init12		;if not /?
+	mov al,[si+1]
+	cmp al,' '
+	je init10		;if nothing after /?
+	cmp al,TAB
+	je init10		;ditto
+	cmp al,CR
+	jne init12		;if not end of line
 
-;	Print a help message
+;--- Print a help message
 
-init10:	mov	dx,imsg1	;command-line help message
-	call	int21ah9	;print string
-	int	20h		;done
+init10:
+	mov dx,offset imsg1	;command-line help message
+	call int21ah9	;print string
+	int 20h			;done
 
-;	Do the (proper) switches.
+;--- Do the (proper) switches.
 
-init11:	lodsb
-	cmp	al,'?'
-	je	init10		;if -?
+init11:
+	lodsb
+	cmp al,'?'
+	je init10		;if -?
 
-;	||| Other switches may go here.
+;--- ||| Other switches may go here.
 
-	mov	[imsg2a],al
-	mov	dx,imsg2	;Invalid switch
-	call	int21ah9	;print string
-	mov	ax,4c01h	;Quit and return error status
-	int	21h
+	mov [imsg2a],al
+	mov dx,offset imsg2	;Invalid switch
+	call int21ah9	;print string
+	mov ax,4c01h	;Quit and return error status
+	int 21h
 
-;	Feed the remaining command line to the 'n' command.
+;--- Feed the remaining command line to the 'n' command.
 
 init12:
-	dec	si
+	dec si
 	lodsb
 	call nn		;process the rest of the line
 
-;	Set up interrupt vectors.
+;--- Set up interrupt vectors.
 
-	mov	cx,4
-	mov	si,inttab
-    mov di,intsave
-init13:	
+	mov cx,NUMINTS
+	mov si,offset inttab
+	mov di,offset intsave
+@@:
 	lodsb
-    mov ah,35h
-    int 21h
-    mov [di+0],bx
-    mov [di+2],es
-    add di,4
-    xchg ax,dx
+	mov ah,35h
+	int 21h
+	mov [di+0],bx
+	mov [di+2],es
+	add di,4
+	xchg ax,dx		;save int # in dl
 	lodsw			;get address
-	xchg ax,dx
-	mov	ah,25h		;set interrupt vector
-	int	21h
-	loop init13
+	xchg ax,dx		;restore int # in al, set int offset in dx
+	mov ah,25h		;set interrupt vector
+	int 21h
+	loop @B
 
-	push es
+if MCB
+	mov ah,52h		;get list of lists
+	int 21h
+	mov ax,es:[bx-2]	;start of MCBs
+	mov [wMCB],ax
+endif
 	mov ah,34h
-    int 21h
-    mov word [pInDOS+0],bx
-    mov word [pInDOS+2],es
-%if PM
-    mov [InDosSegm],es
-%endif
-    pop es
-    
-;-- get address of DOS swappable DATA area
-;-- to be used to get/set PSP and thus avoid DOS calls
-;-- will not work for DOS < 3
+	int 21h
+	mov word ptr [pInDOS+0],bx
+	mov word ptr [pInDOS+2],es
+if PM
+	mov [InDosSegm],es
+endif
 
-%if USESDA
+;--- get address of DOS swappable DATA area
+;--- to be used to get/set PSP and thus avoid DOS calls
+;--- will not work for DOS < 3
+
+if USESDA
 	push ds
-    mov ax,5D06h
-    int 21h
-    mov ax,ds
-    pop ds
-    jc noSDA
-    mov word [pSDA+0],si
-    mov word [pSDA+2],ax
-%if PM    
-    mov [SDASegm],ax
-%endif    
-noSDA:
-%endif
+	mov ax,5D06h
+	int 21h
+	mov ax,ds
+	pop ds
+	jc @F
+	mov word ptr [pSDA+0],si
+	mov word ptr [pSDA+2],ax
+if PM
+	mov [SDASegm],ax
+endif
+@@:
+endif
 
-%if PM
-	mov ax,1687h
-    int 2Fh
-    and ax,ax
-    jnz nodpmihost
+if PM
 
 ;--- Windows 9x and DosEmu are among those hosts which handle some
 ;--- V86 Ints internally without first calling the interrupt chain.
 ;--- This causes various sorts of troubles and incompatibilities.
 
-%if WIN9XSUPP
-    mov ax,1600h	;running in a win9x dos box?
-    int 2Fh
-    and al,al
-    jnz no2fhook
-%endif
-%if DOSEMU
-	push es
-    push di
-    mov ax,0F000h
-    mov es,ax
-    mov di,0FFF5h
-    mov si,dDosEmuDate
-    mov cx,4
-    repe cmpsw		;running in DosEmu?
-    pop di
-    pop es
-    jz no2fhook
-%endif
+if WIN9XSUPP
+	mov ax,1600h	;running in a win9x dos box?
+	int 2Fh
+	and al,al
+	jnz no2fhook
+endif
+if DOSEMU
+	mov ax,0F000h
+	mov es,ax
+	mov di,0FFF5h
+	mov si,offset dDosEmuDate
+	mov cx,4
+	repe cmpsw		;running in DosEmu?
+	jz no2fhook
+endif
+	jmp dpmihostchecked
+no2fhook:
+	inc [bNoHook2F]
+dpmihostchecked:
+endif
 
-	mov word [dpmiwatch+0],mydpmientry
-	mov word [dpmiwatch+2],cs
-	mov ax,352Fh
-    int 21h
-    mov [oldi2f+0],bx
-    mov [oldi2f+2],es
 	push ds
-    pop es
-    mov dx,debug2F
-    mov ax,252Fh
-    int 21h
-%if DISPHOOK
-	mov ax,cs
-    mov di,dpmihookcsip
-    call hexword
-    inc di
-    mov ax,mydpmientry
-    call hexword
-    mov dx,dpmihook
-    call int21ah9
-%endif
-    jmp nodpmihost
-no2fhook:    
-    mov [dpmientry+0],di	;then int 2Fh, ax=1687h is not hooked
-    mov [dpmientry+2],es	;(because it doesn't work). Debugging
-    mov [dpmiwatch+0],di	;in protected-mode still may work, but
-    mov [dpmiwatch+2],es	;the initial-switch to PM must be single-stepped
-    mov byte [bNo2FHook],1	;then.
-nodpmihost:
-%endif
-   
-	push ds
-	pop	es
+	pop es
 
-;	Save and modify termination address and the parent PSP field.
+;--- Save and modify termination address and the parent PSP field.
 
-	mov	si,TPIVOFS
-	mov	di,psp22
+	mov si,TPIV
+	mov di,offset psp22
 	movsw
 	movsw
-	mov	word [si-4],debug22
-	mov	[si-2],cs
-	mov	si,16h
+	mov word ptr [si-4],offset debug22
+
+	mov [si-2],cs
+	mov si,PARENT
 	movsw
-	mov	[si-2],cs
+	mov [si-2],cs
+	mov [pspdbe],cs	;indicate there is no debuggee loaded yet
 
-    mov [pspdbe],cs	;indicate there is no debuggee loaded yet
+;--- shrink DEBUG and set its stack
 
-;	shrink DEBUG and set its stack
-    
-	mov	ax,real_end + staksiz + 15
-	and	ax,~15		;new stack pointer
-    mov sp,ax
-	dec	ax
-	dec	ax
-	mov	[savesp],ax	;save new SP minus two (for the word we'll push)
-	inc	ax
-	inc	ax
-	mov	cl,4
-	shr	ax,cl
+	mov ax,offset real_end + STACKSIZ + 15
+	and al,not 15		;new stack pointer
+	mov sp,ax
+	dec ax
+	dec ax
+	mov [savesp],ax	;save new SP minus two (for the word we'll push)
+	inc ax
+	inc ax
+	mov cl,4
+	shr ax,cl
 	mov bx,ax
-    mov ah,4Ah
-    jmp initcont
+	mov ah,4Ah
+	jmp initcont
+initcode endp
+
+_ITEXT ends
+
+_IDATA segment
+cntpatch = ($ - patches) / 2
+_IDATA ends
+
+	end start
